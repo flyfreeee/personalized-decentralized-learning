@@ -41,8 +41,8 @@ if __name__ == '__main__':
     args = args_parser()
     exp_details(args)
 
-    use_cuda = torch.cuda.is_available()
-    device = torch.device('cuda' if use_cuda else 'cpu')
+
+    device = torch.device('cuda' if args.gpu else 'cpu')
 
     # load dataset and user groups
     train_dataset, test_dataset, user_groups = get_dataset(args)
@@ -134,7 +134,7 @@ if __name__ == '__main__':
 
         info = pd.DataFrame([acc_list, loss_list])
         info = pd.DataFrame(info.values.T, columns=['acc', 'loss'])
-        info.to_csv(str(args.num_users)+'user_'+args.dataset + '_' + str(args.local_ep) +'_' + str(args.lr)+ '.csv')
+        info.to_csv(str(args.num_users)+'user_'+args.dataset + '_' + str(args.local_ep) +'_' + str(args.lr)+ '.csv', index=None)
 
         # print global training loss after every 'i' rounds
 
