@@ -1,0 +1,8 @@
+federated_main.py --model=cnn --dataset=mnist --gpu=0 --epochs=100 --iid=0 --local_ep=5 --unequal=1 --num_users=5 --frac=1
+python federated_main.py --model=cnn --dataset=mnist --gpu=0 --epochs=150 --iid=0 --local_ep=1 --unequal=1 --num_users=10 --frac=1 --lr=0.01
+python federated_main.py --model=cnn --dataset=mnist --gpu=0 --epochs=150 --iid=0 --local_ep=1 --unequal=1 --num_users=50 --frac=1 --lr=0.005
+
+
+python federated_main.py --model=cnn --dataset=mnist --gpu=0 --epochs=150 --iid=0 --local_ep=5 --unequal=1 --num_users=5 --frac=1 --lr=0.005
+python federated_main.py --model=cnn --dataset=fmnist --gpu=0 --epochs=150 --iid=0 --local_ep=5 --unequal=1 --num_users=5 --frac=1 --lr=0.005
+python federated_main.py --model=cnn --dataset=cifar --gpu=0 --epochs=150 --iid=0 --local_ep=5 --unequal=1 --num_users=100 --frac=1 --lr=0.005
