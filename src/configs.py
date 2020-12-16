@@ -4,10 +4,9 @@
 
 class Configs(object):
     def __init__(self):
-        self.data = 'mnist'
+        self.data = 'cifar100'
         self.user_num = 5
-        self.tau = 5
-        self.gpu = 0
+        self.gpu = 1
         self.rounds = 150
         self.local_ep = 5
         self.iid = 0

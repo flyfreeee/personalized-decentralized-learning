@@ -15,7 +15,7 @@ from tensorboardX import SummaryWriter
 
 from options import args_parser
 from update import LocalUpdate, test_inference
-from models import MLP, CNNMnist, CNNFashion_Mnist, CNNCifar
+from models import MLP, CNNMnist, CNNFashion_Mnist, CNNCifar, googlenet, ResNet18
 from utils import get_dataset, average_weights, exp_details
 import pandas as pd
 import random
@@ -56,6 +56,8 @@ if __name__ == '__main__':
             global_model = CNNFashion_Mnist(args=args)
         elif args.dataset == 'cifar':
             global_model = CNNCifar(args=args)
+        elif args.dataset == 'cifar100':
+            global_model = ResNet18()
 
     elif args.model == 'mlp':
         # Multi-layer preceptron
@@ -75,7 +77,7 @@ if __name__ == '__main__':
 
     global_model.to(device)
     global_model.train()
-    print(global_model)
+    # print(global_model)
 
     # copy weights
     global_weights = global_model.state_dict()
@@ -96,11 +98,11 @@ if __name__ == '__main__':
         for idx in idxs_users:
             local_model = LocalUpdate(args=args, dataset=train_dataset,
                                       idxs=user_groups[idx], logger=logger)
-            w, loss = local_model.update_weights(
+            w, train_loss = local_model.update_weights(
                 model=copy.deepcopy(global_model), global_round=epoch)
             acc, loss = local_model.inference(model=global_model)
             local_weights.append(copy.deepcopy(w))
-            local_losses.append(copy.deepcopy(loss))
+            local_losses.append(copy.deepcopy(train_loss))
             local_acc.append(acc)
 
         # update global weights
@@ -114,7 +116,7 @@ if __name__ == '__main__':
         global_model.load_state_dict(global_weights)
 
         loss_avg = sum(local_losses) / len(local_losses)
-        acc_avg = sum(local_losses) / len(local_losses)
+        acc_avg = sum(local_acc) / len(local_acc)
 
         test_acc, test_loss = test_inference(args, global_model, test_dataset)
 
