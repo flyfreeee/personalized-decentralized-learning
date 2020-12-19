@@ -4,6 +4,7 @@
 
 from torch import nn
 import torch.nn.functional as F
+from options import args_parser
 
 
 class MLP(nn.Module):
@@ -412,7 +413,436 @@ class GoogleNet(nn.Module):
 def googlenet():
     return GoogleNet()
 
+class AlexNet(nn.Module):
+
+  def __init__(self, classes=100):
+    super(AlexNet, self).__init__()
+    self.features = nn.Sequential(
+      nn.Conv2d(3, 64, kernel_size=3, stride=2, padding=1),
+      nn.ReLU(inplace=True),
+      nn.MaxPool2d(kernel_size=3, stride=2),
+      nn.Conv2d(64, 192, kernel_size=3, stride=1, padding=1),
+      nn.ReLU(inplace=True),
+      nn.MaxPool2d(kernel_size=3, stride=2),
+      nn.Conv2d(192, 384, kernel_size=3, stride=1, padding=1),
+      nn.ReLU(inplace=True),
+      nn.Conv2d(384, 256, kernel_size=3, stride=1, padding=1),
+      nn.ReLU(inplace=True),
+      nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1),
+      nn.ReLU(inplace=True),
+      nn.MaxPool2d(kernel_size=3, stride=2),
+    )
+    self.classifier = nn.Sequential(
+      nn.Dropout(),
+      nn.Linear(256 * 1 * 1, 4096),
+      nn.ReLU(inplace=True),
+      nn.Dropout(),
+      nn.Linear(4096, 4096),
+      nn.ReLU(inplace=True),
+      nn.Linear(4096, classes),
+    )
+
+  def forward(self, x):
+    x = self.features(x)
+    x = torch.flatten(x, 1)
+    x = self.classifier(x)
+    return x
+
+
+class LeNet(nn.Module):
+    def __init__(self):
+        super(LeNet, self).__init__()
+        self.conv1 = nn.Conv2d(3, 6, 5)
+        self.conv2 = nn.Conv2d(6, 16, 5)
+        self.fc1   = nn.Linear(16*5*5, 120)
+        self.fc2   = nn.Linear(120, 84)
+        self.fc3   = nn.Linear(84, 100)
+
+    def forward(self, x):
+        out = F.relu(self.conv1(x))
+        out = F.max_pool2d(out, 2)
+        out = F.relu(self.conv2(out))
+        out = F.max_pool2d(out, 2)
+        out = out.view(out.size(0), -1)
+        out = F.relu(self.fc1(out))
+        out = F.relu(self.fc2(out))
+        out = self.fc3(out)
+        return out
+
+
+def conv3x3(in_channels, out_channels, stride=1):
+    """3x3 kernel size with padding convolutional layer in ResNet BasicBlock."""
+    return nn.Conv2d(
+        in_channels=in_channels,
+        out_channels=out_channels,
+        kernel_size=3,
+        stride=stride,
+        padding=1,
+        bias=False)
+
+
+cfg = {
+    'A': [64, 'M', 128, 'M', 256, 256, 'M', 512, 512, 'M', 512, 512, 'M'],
+    'B': [64, 64, 'M', 128, 128, 'M', 256, 256, 'M', 512, 512, 'M', 512, 512, 'M'],
+    'D': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'M', 512, 512, 512, 'M', 512, 512, 512, 'M'],
+    'E': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 256, 'M', 512, 512, 512, 512, 'M', 512, 512, 512, 512, 'M']
+}
+
+
+class VGG(nn.Module):
+
+    def __init__(self, features, num_class=100):
+        super().__init__()
+        self.features = features
+
+        self.classifier = nn.Sequential(
+            nn.Linear(512, 4096),
+            nn.ReLU(inplace=True),
+            nn.Dropout(),
+            nn.Linear(4096, 4096),
+            nn.ReLU(inplace=True),
+            nn.Dropout(),
+            nn.Linear(4096, num_class)
+        )
+
+    def forward(self, x):
+        output = self.features(x)
+        output = output.view(output.size()[0], -1)
+        output = self.classifier(output)
+
+        return output
+Half_width =256
+layer_width=512
+
+class SpinalVGG(nn.Module):
+
+    def __init__(self, features, num_class=100):
+        super().__init__()
+        self.features = features
+
+        self.fc_spinal_layer1 = nn.Sequential(
+            nn.Dropout(), nn.Linear(Half_width, layer_width),
+            nn.ReLU(inplace=True),
+        )
+        self.fc_spinal_layer2 = nn.Sequential(
+            nn.Dropout(), nn.Linear(Half_width + layer_width, layer_width),
+            nn.ReLU(inplace=True),
+        )
+        self.fc_spinal_layer3 = nn.Sequential(
+            nn.Dropout(), nn.Linear(Half_width + layer_width, layer_width),
+            nn.ReLU(inplace=True),
+        )
+        self.fc_spinal_layer4 = nn.Sequential(
+            nn.Dropout(), nn.Linear(Half_width + layer_width, layer_width),
+            nn.ReLU(inplace=True),
+        )
+        self.fc_out = nn.Sequential(
+            nn.Dropout(), nn.Linear(layer_width * 4, num_class)
+        )
+
+    def forward(self, x):
+        output = self.features(x)
+        output = output.view(output.size()[0], -1)
+        x = output
+        x1 = self.fc_spinal_layer1(x[:, 0:Half_width])
+        x2 = self.fc_spinal_layer2(torch.cat([x[:, Half_width:2 * Half_width], x1], dim=1))
+        x3 = self.fc_spinal_layer3(torch.cat([x[:, 0:Half_width], x2], dim=1))
+        x4 = self.fc_spinal_layer4(torch.cat([x[:, Half_width:2 * Half_width], x3], dim=1))
+
+        x = torch.cat([x1, x2], dim=1)
+        x = torch.cat([x, x3], dim=1)
+        x = torch.cat([x, x4], dim=1)
+
+        x = self.fc_out(x)
+
+        return x
+
+
+def make_layers(cfg, batch_norm=False):
+    layers = []
+
+    input_channel = 3
+    for l in cfg:
+        if l == 'M':
+            layers += [nn.MaxPool2d(kernel_size=2, stride=2)]
+            continue
+
+        layers += [nn.Conv2d(input_channel, l, kernel_size=3, padding=1)]
+
+        if batch_norm:
+            layers += [nn.BatchNorm2d(l)]
+
+        layers += [nn.ReLU(inplace=True)]
+        input_channel = l
+
+    return nn.Sequential(*layers)
+
+
+def vgg11_bn():
+    return VGG(make_layers(cfg['A'], batch_norm=True))
+
+
+def vgg13_bn():
+    return VGG(make_layers(cfg['B'], batch_norm=True))
+
+
+def vgg16_bn():
+    return VGG(make_layers(cfg['D'], batch_norm=True))
+
+
+def vgg19_bn():
+    return VGG(make_layers(cfg['E'], batch_norm=True))
+
+
+def Spinalvgg11_bn():
+    return SpinalVGG(make_layers(cfg['A'], batch_norm=True))
+
+
+def Spinalvgg13_bn():
+    return SpinalVGG(make_layers(cfg['B'], batch_norm=True))
+
+
+def Spinalvgg16_bn():
+    return SpinalVGG(make_layers(cfg['D'], batch_norm=True))
+
+
+def Spinalvgg19_bn():
+    return SpinalVGG(make_layers(cfg['E'], batch_norm=True))
+
+
+class DepthSeperabelConv2d(nn.Module):
+
+    def __init__(self, input_channels, output_channels, kernel_size, **kwargs):
+        super().__init__()
+        self.depthwise = nn.Sequential(
+            nn.Conv2d(
+                input_channels,
+                input_channels,
+                kernel_size,
+                groups=input_channels,
+                **kwargs),
+            nn.BatchNorm2d(input_channels),
+            nn.ReLU(inplace=True)
+        )
+
+        self.pointwise = nn.Sequential(
+            nn.Conv2d(input_channels, output_channels, 1),
+            nn.BatchNorm2d(output_channels),
+            nn.ReLU(inplace=True)
+        )
+
+    def forward(self, x):
+        x = self.depthwise(x)
+        x = self.pointwise(x)
+
+        return x
+
+
+class BasicConv2d(nn.Module):
+
+    def __init__(self, input_channels, output_channels, kernel_size, **kwargs):
+
+        super().__init__()
+        self.conv = nn.Conv2d(
+            input_channels, output_channels, kernel_size, **kwargs)
+        self.bn = nn.BatchNorm2d(output_channels)
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.bn(x)
+        x = self.relu(x)
+
+        return x
+
+
+class MobileNet(nn.Module):
+
+    """
+    Args:
+        width multipler: The role of the width multiplier α is to thin
+                         a network uniformly at each layer. For a given
+                         layer and width multiplier α, the number of
+                         input channels M becomes αM and the number of
+                         output channels N becomes αN.
+    """
+
+    def __init__(self, width_multiplier=1, class_num=100):
+       super().__init__()
+
+       alpha = width_multiplier
+       self.stem = nn.Sequential(
+           BasicConv2d(3, int(32 * alpha), 3, padding=1, bias=False),
+           DepthSeperabelConv2d(
+               int(32 * alpha),
+               int(64 * alpha),
+               3,
+               padding=1,
+               bias=False
+           )
+       )
+
+       #downsample
+       self.conv1 = nn.Sequential(
+           DepthSeperabelConv2d(
+               int(64 * alpha),
+               int(128 * alpha),
+               3,
+               stride=2,
+               padding=1,
+               bias=False
+           ),
+           DepthSeperabelConv2d(
+               int(128 * alpha),
+               int(128 * alpha),
+               3,
+               padding=1,
+               bias=False
+           )
+       )
+
+       #downsample
+       self.conv2 = nn.Sequential(
+           DepthSeperabelConv2d(
+               int(128 * alpha),
+               int(256 * alpha),
+               3,
+               stride=2,
+               padding=1,
+               bias=False
+           ),
+           DepthSeperabelConv2d(
+               int(256 * alpha),
+               int(256 * alpha),
+               3,
+               padding=1,
+               bias=False
+           )
+       )
+
+       #downsample
+       self.conv3 = nn.Sequential(
+           DepthSeperabelConv2d(
+               int(256 * alpha),
+               int(512 * alpha),
+               3,
+               stride=2,
+               padding=1,
+               bias=False
+           ),
+
+           DepthSeperabelConv2d(
+               int(512 * alpha),
+               int(512 * alpha),
+               3,
+               padding=1,
+               bias=False
+           ),
+           DepthSeperabelConv2d(
+               int(512 * alpha),
+               int(512 * alpha),
+               3,
+               padding=1,
+               bias=False
+           ),
+           DepthSeperabelConv2d(
+               int(512 * alpha),
+               int(512 * alpha),
+               3,
+               padding=1,
+               bias=False
+           ),
+           DepthSeperabelConv2d(
+               int(512 * alpha),
+               int(512 * alpha),
+               3,
+               padding=1,
+               bias=False
+           ),
+           DepthSeperabelConv2d(
+               int(512 * alpha),
+               int(512 * alpha),
+               3,
+               padding=1,
+               bias=False
+           )
+       )
+
+       #downsample
+       self.conv4 = nn.Sequential(
+           DepthSeperabelConv2d(
+               int(512 * alpha),
+               int(1024 * alpha),
+               3,
+               stride=2,
+               padding=1,
+               bias=False
+           ),
+           DepthSeperabelConv2d(
+               int(1024 * alpha),
+               int(1024 * alpha),
+               3,
+               padding=1,
+               bias=False
+           )
+       )
+
+       self.fc = nn.Linear(int(1024 * alpha), class_num)
+       self.avg = nn.AdaptiveAvgPool2d(1)
+
+    def forward(self, x):
+        x = self.stem(x)
+
+        x = self.conv1(x)
+        x = self.conv2(x)
+        x = self.conv3(x)
+        x = self.conv4(x)
+
+        x = self.avg(x)
+        x = x.view(x.size(0), -1)
+        x = self.fc(x)
+        return x
+
+
+def mobilenet(alpha=1, class_num=100):
+    return MobileNet(alpha, class_num)
+
+def get_parameter_number(net):
+    total_num = sum(p.numel() for p in net.parameters())
+    trainable_num = sum(p.numel() for p in net.parameters() if p.requires_grad)
+    return {'Total': total_num, 'Trainable': trainable_num}
+
 def test():
+    args = args_parser()
+    net = CNNMnist(args)
+    print('CNNMnist', get_parameter_number(net))
+
+    net = CNNCifar(args)
+    print('CNNCifar', get_parameter_number(net))
+
+    net = LeNet()
+    print('LeNet', get_parameter_number(net))
+
+    net = AlexNet()
+    print('AlexNet', get_parameter_number(net))
+
     net = ResNet18()
-    y = net(torch.randn(1,3,32,32))
-    print(y, y.size())
+    print('ResNet18', get_parameter_number(net))
+
+    net = googlenet()
+    print('GoogleNet', get_parameter_number(net))
+
+    net = vgg11_bn()
+    print('VGG11', get_parameter_number(net))
+
+    net = mobilenet()
+    print('MobileNet', get_parameter_number(net))
+
+    net = Spinalvgg11_bn()
+    print('Spinalvgg11', get_parameter_number(net))
+
+    # y = net(torch.randn(1,3,32,32))
+    # print(y, y.size())
+
+if __name__ == '__main__':
+    test()

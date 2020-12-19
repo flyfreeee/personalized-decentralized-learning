@@ -15,10 +15,12 @@ from tensorboardX import SummaryWriter
 
 from options import args_parser
 from update import LocalUpdate, test_inference
-from models import MLP, CNNMnist, CNNFashion_Mnist, CNNCifar, googlenet, ResNet18
+from models import MLP, CNNMnist, CNNFashion_Mnist, CNNCifar, googlenet, ResNet18, AlexNet, LeNet
 from utils import get_dataset, average_weights, exp_details
 import pandas as pd
 import random
+from cjltest.models import RNNModel
+from cjltest.utils_model import MySGD
 
 def get_parameter_number(net):
     total_num = sum(p.numel() for p in net.parameters())
@@ -45,6 +47,8 @@ if __name__ == '__main__':
     device = torch.device('cuda' if args.gpu else 'cpu')
 
     # load dataset and user groups
+
+
     train_dataset, test_dataset, user_groups = get_dataset(args)
 
     # BUILD MODEL
@@ -57,7 +61,9 @@ if __name__ == '__main__':
         elif args.dataset == 'cifar':
             global_model = CNNCifar(args=args)
         elif args.dataset == 'cifar100':
-            global_model = ResNet18()
+            global_model = LeNet()
+        elif args.dataset == 'PBT':
+            global_model = RNNModel()
 
     elif args.model == 'mlp':
         # Multi-layer preceptron
