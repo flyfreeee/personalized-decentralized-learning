@@ -10,6 +10,7 @@ import time
 import math
 import torch
 import numpy as np
+import pandas as pd
 from torch import nn
 from torch.nn.utils import clip_grad_norm_
 # import torch.distributed.deprecated as dist
@@ -36,7 +37,7 @@ parser.add_argument('--save-path', type=str, default='./')          # 结果的�
 
 # 参数信息
 parser.add_argument('--workers-num', type=int, default=5)
-parser.add_argument('--epochs', type=int, default=200)              # total epochs
+parser.add_argument('--epochs', type=int, default=750)              # total epochs
 parser.add_argument('--train-bsz', type=int, default=10)           # the total batch size of all workers
 parser.add_argument('--bptt', type=int, default=35,
                     help='sequence length')
@@ -165,7 +166,7 @@ def run(workers, models, save_path, train_data_list, test_data, ntokens,train_ba
     else:
         decay_period = 200
 
-
+    data_save = pd.DataFrame(columns=['Training Round', 'Training Loss', 'Training Perplexity', 'Test Loss', 'Test Perplexity'])
     print('Begin!')
 
     # store (train loss, energy, iterations)
@@ -193,14 +194,19 @@ def run(workers, models, save_path, train_data_list, test_data, ntokens,train_ba
         g_list.append(g_temp)
     it_count = 0
     s_time = time.time()
+
+    epoch_loss = []
+
+
     for epoch in range(1, args.epochs + 1):
         epoch_start_time = time.time()
         for i in workers:
             models[i].train()
         iterations_epoch = 0
-
+        user_loss = []
         for j in workers:
             sequence_iter = range(0, train_data_list[j - 1].size(0) - 1, args.bptt)
+            batch_loss = []
             for batch, i in enumerate(sequence_iter):
                 it_count += 1
                 iterations_epoch += 1
@@ -225,9 +231,15 @@ def run(workers, models, save_path, train_data_list, test_data, ntokens,train_ba
                 for p_layer_idx, p_layer_temp in enumerate(models[j].parameters()):
                     p_layer_temp.data -= delta_ws[p_layer_idx]
                     g_list[j-1][p_layer_idx].data += delta_ws[p_layer_idx]
+
                 iteration_loss += loss.data.item()      # worker i 当前round的平均loss
-            print("iteration loss:", iteration_loss / workers_num)
+                batch_loss.append(loss.data.item())
+
+            user_loss.append(sum(batch_loss)/len(batch_loss))
+
             epoch_train_loss += iteration_loss/workers_num
+
+        epoch_loss.append(sum(user_loss)/len(user_loss))
 
 
         if epoch % args.K == 0:
@@ -272,8 +284,11 @@ def run(workers, models, save_path, train_data_list, test_data, ntokens,train_ba
         # 训练结束后进行test
         if epoch % 5 == 0:
             # Run on test data.
+            train_loss = sum(epoch_loss)/len(epoch_loss)
+            epoch_loss = []
             test_loss = evaluate(models[0], ntokens, 10, test_data, criterion=criterion)
-
+            data_save.append([{'Training Round': epoch, 'Training Loss': train_loss, 'Training Perplexity': math.exp(train_loss), 'Test Loss': test_loss, 'Test Perplexity': math.exp(test_loss)}])
+            data_save.to_csv('PTB_data.csv')
             print("test_loss:", test_loss)
         f_trainloss.write(str(args.this_rank) +
                           "\t" + str(epoch_train_loss / float(iterations_epoch)) +
