@@ -52,6 +52,11 @@ parser.add_argument('--stale-threshold', type=int, default=2)
 
 args = parser.parse_args()
 
+def get_parameter_number(net):
+    total_num = sum(p.numel() for p in net.parameters())
+    trainable_num = sum(p.numel() for p in net.parameters() if p.requires_grad)
+    return {'Total': total_num, 'Trainable': trainable_num}
+
 class Dictionary(object):
     def __init__(self):
         self.word2idx = {}
@@ -386,10 +391,11 @@ if __name__ == '__main__':
     models = []
     for i in range(workers_num + 1):
         model = RNNModel(args.model, ntokens,
-                         ninp=200, nhid=200,
+                         ninp=10, nhid=10,
                          nlayers=2, dropout=0.2, tie_weights=True)
         models.append(model)
 
+    print(get_parameter_number(model))
 
     save_path = str(args.save_path)
     save_path = save_path.rstrip('/')
