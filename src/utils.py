@@ -58,7 +58,10 @@ def get_dataset(args):
         test_dataset = datasets.CIFAR100(data_dir, train=False, download=True,
                                         transform = transform_test)
 
-        user_groups = cifar_noniid_unequal(train_dataset, args.num_users)
+        if args.num_users == 5:
+            user_groups = cifar_noniid_unequal(train_dataset, args.num_users)
+        else:
+            user_groups = cifar_iid(train_dataset, args.num_users)
 
     elif args.dataset == 'imagenet':
         data_dir = 'C:/Users/Yiliu/Desktop/imagenet'
