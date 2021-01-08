@@ -4,13 +4,18 @@
 
 class Configs(object):
     def __init__(self):
-        self.data = 'cifar100'
+        self.data = 'cifar'
         self.user_num = 5
         self.gpu = 1
         self.rounds = 150
-        self.local_ep = 5
-        self.iid = 1
+        self.local_ep = 1
+        self.iid = 0
         self.unequal = 1
         self.frac = 1
         self.lr = 0.005
         self.model = 'cnn'
+        if self.data == 'cifar':
+
+            self.batch_size = 50
+        else:
+            self.batch_size = 10

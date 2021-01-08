@@ -34,6 +34,8 @@ class LocalUpdate(object):
 
         if args.dataset == 'cifar100':
             self.criterion = nn.CrossEntropyLoss().to(self.device)
+        elif args.dataset == 'cifar':
+            self.criterion = nn.CrossEntropyLoss().to(self.device)
         else:
             self.criterion = nn.NLLLoss().to(self.device)
 
@@ -125,6 +127,8 @@ def test_inference(args, model, test_dataset):
     device = 'cuda' if args.gpu else 'cpu'
 
     if args.dataset == 'cifar100':
+        criterion = nn.CrossEntropyLoss().to(device)
+    elif args.dataset == 'cifar':
         criterion = nn.CrossEntropyLoss().to(device)
     else:
         criterion = nn.NLLLoss().to(device)
