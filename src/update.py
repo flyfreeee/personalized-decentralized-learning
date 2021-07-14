@@ -5,7 +5,7 @@
 import torch
 from torch import nn
 from torch.utils.data import DataLoader, Dataset
-
+from dloptimizer import dlOptimizer
 
 class DatasetSplit(Dataset):
     """An abstract Dataset class wrapped around Pytorch Dataset class.
@@ -32,12 +32,10 @@ class LocalUpdate(object):
         self.device = 'cuda' if args.gpu else 'cpu'
         # Default criterion set to NLL loss function
 
-        if args.dataset == 'cifar100':
-            self.criterion = nn.CrossEntropyLoss().to(self.device)
-        elif args.dataset == 'cifar':
-            self.criterion = nn.CrossEntropyLoss().to(self.device)
-        else:
+        if args.dataset == 'mnist' or 'fmnist':
             self.criterion = nn.NLLLoss().to(self.device)
+        else:
+            self.criterion = nn.CrossEntropyLoss().to(self.device)
 
     def train_val_test(self, dataset, idxs):
         """
@@ -57,18 +55,20 @@ class LocalUpdate(object):
                                 batch_size=int(len(idxs_test)/10), shuffle=False)
         return trainloader, validloader, testloader
 
-    def update_weights(self, model, global_round):
+    def update_weights(self, model, aggregated_models, global_round):  # TODO training function needs to be modified
         # Set mode to train model
         model.train()
         epoch_loss = []
 
         # Set optimizer for the local updates
-        if self.args.optimizer == 'sgd':
-            optimizer = torch.optim.SGD(model.parameters(), lr=self.args.lr,
-                                        momentum=0.5)
-        elif self.args.optimizer == 'adam':
-            optimizer = torch.optim.Adam(model.parameters(), lr=self.args.lr,
-                                         weight_decay=1e-4)
+        optimizer = dlOptimizer(model.parameters(), lr=self.args.lr, lamda=self.args.lamda)
+
+        # if self.args.optimizer == 'sgd':
+        #     optimizer = torch.optim.SGD(model.parameters(), lr=self.args.lr,
+        #                                 momentum=0.5)
+        # elif self.args.optimizer == 'adam':
+        #     optimizer = torch.optim.Adam(model.parameters(), lr=self.args.lr,
+        #                                  weight_decay=1e-4)
 
         for iter in range(self.args.local_ep):
             batch_loss = []
@@ -79,7 +79,7 @@ class LocalUpdate(object):
                 log_probs = model(images)
                 loss = self.criterion(log_probs, labels)
                 loss.backward()
-                optimizer.step()
+                optimizer.step(aggregated_models)
 
                 if self.args.verbose and (batch_idx % 10 == 0):
                     print('| Global Round : {} | Local Epoch : {} | [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
@@ -126,12 +126,10 @@ def test_inference(args, model, test_dataset):
 
     device = 'cuda' if args.gpu else 'cpu'
 
-    if args.dataset == 'cifar100':
-        criterion = nn.CrossEntropyLoss().to(device)
-    elif args.dataset == 'cifar':
-        criterion = nn.CrossEntropyLoss().to(device)
-    else:
+    if args.dataset == 'mnist' or 'fmnist':
         criterion = nn.NLLLoss().to(device)
+    else:
+        criterion = nn.CrossEntropyLoss().to(device)
     testloader = DataLoader(test_dataset, batch_size=128,
                             shuffle=False)
 

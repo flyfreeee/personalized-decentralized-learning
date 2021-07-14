@@ -2,15 +2,14 @@
 # -*- coding: utf-8 -*-
 # Python version: 3.6
 
-
 import os
 import copy
 import time
-import pickle
 import numpy as np
 from tqdm import tqdm
-
+import math
 import torch
+import torch.nn as nn
 from tensorboardX import SummaryWriter
 
 from options import args_parser
@@ -27,6 +26,49 @@ def get_parameter_number(net):
     trainable_num = sum(p.numel() for p in net.parameters() if p.requires_grad)
     return {'Total': total_num, 'Trainable': trainable_num}
 
+
+def similarity_calculation(model_a, model_b): # TODO add temperature parameter tau
+
+    param_a = torch.cat([params.view(-1) for layer, params in model_a.items()])
+    param_b = torch.cat([params.view(-1) for layer, params in model_b.items()])
+
+    cos = nn.CosineSimilarity(dim=0, eps=1e-6)
+    similarity = math.exp(cos(param_a, param_b))
+    return similarity
+
+# server_model = {1:odict([])}
+# client_models = {2:Tensor([]), 5:Tensor([])}
+def personalized_aggregation(server_model, client_models):
+
+    aggregated_models = {}
+    server_idx = list(server_model.keys())[0]
+    server_param = server_model[server_idx]
+
+    for idx, param in client_models.items():
+        similarities = {}
+        similarities[server_idx] = similarity_calculation(param, server_param)
+        aggregated_models[idx] = copy.deepcopy(server_param)
+        for layer, params in aggregated_models[idx].items():
+            params *= similarities[server_idx]
+
+        for neighbor, n_param in client_models.items():
+            if neighbor == idx:
+                continue
+            similarities[neighbor] = similarity_calculation(param, n_param)
+            to_be_aggregated = copy.deepcopy(n_param)
+            for layer, params in to_be_aggregated.items():
+                aggregated_models[idx][layer] += similarities[neighbor]*params
+
+        total_similarity = sum(similarities.values())
+        for layer, params in aggregated_models[idx].items():
+            params /= total_similarity
+
+    return aggregated_models
+
+# if __name__ == '__main__':
+#     server_model = {1: torch.Tensor([1, 2])}
+#     client_models = {2: torch.Tensor([2, 3]), 5: torch.Tensor([-5, 1])}
+#     personalized_aggregation(server_model, client_models)
 
 if __name__ == '__main__':
 
@@ -47,8 +89,6 @@ if __name__ == '__main__':
     device = torch.device('cuda' if args.gpu else 'cpu')
 
     # load dataset and user groups
-
-
     train_dataset, test_dataset, user_groups = get_dataset(args)
 
     # BUILD MODEL
@@ -66,7 +106,7 @@ if __name__ == '__main__':
             global_model = RNNModel()
 
     elif args.model == 'mlp':
-        # Multi-layer preceptron
+        # Multi-layer perceptron
         img_size = train_dataset[0][0].shape
         len_in = 1
         for x in img_size:
@@ -94,49 +134,67 @@ if __name__ == '__main__':
     print_every = 2
     val_loss_pre, counter = 0, 0
     info = pd.DataFrame(columns=['test_acc', 'test_loss', 'train_acc', 'train_loss'])
+    # client_will = args.client_will
+
+    aggregated_models_all = {}
+    clients_model = {}
+    idxs_users = list(user_groups.keys())
+    for idx in idxs_users:
+        clients_model[idx] = global_model.state_dict()
+
     for epoch in tqdm(range(args.epochs)):
         local_weights, local_losses, local_acc = [], [], []
         print(f'\n | Global Training Round : {epoch+1} |\n')
 
         global_model.train()
-        idxs_users = list(user_groups.keys())
+
+        aggregated_models_all = {0: [], 1: [], 2: [], 3: [], 4: []}
 
         for idx in idxs_users:
+
+            neighbor_models = {}
+
+            for one in args.neighbors[idx]:
+                neighbor_models[one] = clients_model[one]
+            aggregated_models = personalized_aggregation({idx: clients_model[idx]}, neighbor_models)
+
+            for idx, model in aggregated_models.items():
+                aggregated_models_all[idx].append(model)
+
+        for idx in idxs_users:
+            # if client_will[epoch][idx]:
             local_model = LocalUpdate(args=args, dataset=train_dataset,
                                       idxs=user_groups[idx], logger=logger)
+
+            aggregated_models = aggregated_models_all[idx]
+
             w, train_loss = local_model.update_weights(
-                model=copy.deepcopy(global_model), global_round=epoch)
+                copy.deepcopy(clients_model[idx]), aggregated_models, global_round=epoch)
             acc, loss = local_model.inference(model=global_model)
-            local_weights.append(copy.deepcopy(w))
-            local_losses.append(copy.deepcopy(train_loss))
-            local_acc.append(acc)
 
-        # update global weights
-        global_weights = average_weights(local_weights)
+            clients_model[idx] = copy.deepcopy(w)
+            # local_weights.append(copy.deepcopy(w))
+            # local_losses.append(copy.deepcopy(train_loss))
+            # local_acc.append(acc)
+        #
+        #
+        print(epoch)
+        # loss_avg = sum(local_losses) / len(local_losses)
+        # acc_avg = sum(local_acc) / len(local_acc)
+        #
+        # test_acc, test_loss = test_inference(args, global_model, test_dataset)
 
-        # print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!', type(global_weights))
-        # print(len(global_weights))
-        # print(global_weights)
-
-        # update global weights
-        global_model.load_state_dict(global_weights)
-
-        loss_avg = sum(local_losses) / len(local_losses)
-        acc_avg = sum(local_acc) / len(local_acc)
-
-        test_acc, test_loss = test_inference(args, global_model, test_dataset)
-
-
-
-        info = info.append([{'test_acc': test_acc, 'test_loss': test_loss, 'train_acc': acc_avg, 'train_loss': loss_avg}])
-        info.to_csv(str(args.num_users)+'user_'+args.dataset + '_' + str(args.local_ep) +'_' + str(args.lr)+ '.csv', index=None)
+        #
+        #
+        # info = info.append([{'test_acc': test_acc, 'test_loss': test_loss, 'train_acc': acc_avg, 'train_loss': loss_avg}])
+        # info.to_csv(str(args.num_users)+'user_'+args.dataset + '_' + str(args.local_ep) +'_' + str(args.lr)+ '_with_free_will.csv', index=None)
 
         # print global training loss after every 'i' rounds
 
-        if (epoch+1) % print_every == 0:
-            print(f' \nAvg Training Stats after {epoch+1} global rounds:')
-            print(f'Training Loss : {loss_avg}')
-            print('Train Accuracy: {:.2f}% \n'.format(100*acc_avg))
+        # if (epoch+1) % print_every == 0:
+        #     print(f' \nAvg Training Stats after {epoch+1} global rounds:')
+        #     print(f'Training Loss : {loss_avg}')
+        #     print('Train Accuracy: {:.2f}% \n'.format(100*acc_avg))
 
 
 

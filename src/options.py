@@ -19,12 +19,20 @@ def args_parser():
                         help='the fraction of clients: C')
     parser.add_argument('--local_ep', type=int, default=configs.local_ep,
                         help="the number of local epochs: E")
+    parser.add_argument('--client_will', default=configs.client_will,
+                        help="the participation of local clients")
     parser.add_argument('--local_bs', type=int, default=configs.batch_size,
                         help="local batch size: B")
     parser.add_argument('--lr', type=float, default=configs.lr,
                         help='learning rate')
     parser.add_argument('--momentum', type=float, default=0.5,
                         help='SGD momentum (default: 0.5)')
+
+    parser.add_argument('--neighbors', type=dict, default=configs.neighbors,
+                        help='neighborhoods connections')
+
+    parser.add_argument('--lamda', type=float, default=configs.lamda,
+                        help='regularization parameter')
 
     # model arguments
     parser.add_argument('--model', type=str, default=configs.model, help='model name')
