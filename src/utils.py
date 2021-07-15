@@ -8,6 +8,7 @@ from torchvision import datasets, transforms
 from sampling import mnist_iid, mnist_noniid, mnist_noniid_unequal
 from sampling import cifar_iid, cifar_noniid, cifar_noniid_unequal
 from options import args_parser
+from partition import *
 
 def get_dataset(args):
     """ Returns train and test datasets and a user group which is a dict where
@@ -36,7 +37,8 @@ def get_dataset(args):
             if args.unequal:
                 # Chose uneuqal splits for every user
                 # raise NotImplementedError()
-                user_groups = cifar_noniid_unequal(train_dataset, args.num_users)
+                # user_groups = cifar_noniid_unequal(train_dataset, args.num_users)
+                user_groups = data_partition(train_dataset, args.num_users, args.non_iid_level)
             else:
                 # Chose euqal splits for every user
                 user_groups = cifar_noniid(train_dataset, args.num_users)

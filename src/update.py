@@ -6,6 +6,7 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader, Dataset
 from dloptimizer import dlOptimizer
+from sklearn.model_selection import train_test_split
 
 class DatasetSplit(Dataset):
     """An abstract Dataset class wrapped around Pytorch Dataset class.
@@ -32,7 +33,7 @@ class LocalUpdate(object):
         self.device = 'cuda' if args.gpu else 'cpu'
         # Default criterion set to NLL loss function
 
-        if args.dataset == 'mnist' or 'fmnist':
+        if args.dataset == 'cifar' or 'mnist' or 'fmnist':
             self.criterion = nn.NLLLoss().to(self.device)
         else:
             self.criterion = nn.CrossEntropyLoss().to(self.device)
@@ -43,9 +44,13 @@ class LocalUpdate(object):
         and user indexes.
         """
         # split indexes for train, validation, and test (80, 10, 10)
-        idxs_train = idxs[:int(0.8*len(idxs))]
-        idxs_val = idxs[int(0.8*len(idxs)):int(0.9*len(idxs))]
-        idxs_test = idxs[int(0.9*len(idxs)):]
+
+        idxs_train, idxs_tmp = train_test_split(idxs, test_size = 0.2, random_state = 42)
+        idxs_val, idxs_test = train_test_split(idxs_tmp, test_size = 0.5, random_state = 42)
+
+        # idxs_train = idxs[:int(0.8*len(idxs))]
+        # idxs_val = idxs[int(0.8*len(idxs)):int(0.9*len(idxs))]
+        # idxs_test = idxs[int(0.9*len(idxs)):]
 
         trainloader = DataLoader(DatasetSplit(dataset, idxs_train),
                                  batch_size=self.args.local_bs, shuffle=True)
@@ -103,12 +108,14 @@ class LocalUpdate(object):
             images, labels = images.to(self.device), labels.to(self.device)
 
             # Inference
-            outputs = model(images)
+            with torch.no_grad():
+                outputs = model(images)
+
             batch_loss = self.criterion(outputs, labels)
             loss += batch_loss.item()
 
             # Prediction
-            _, pred_labels = torch.max(outputs, 1)
+            _, pred_labels = torch.max(outputs, dim=1)
             pred_labels = pred_labels.view(-1)
             correct += torch.sum(torch.eq(pred_labels, labels)).item()
             total += len(labels)
@@ -137,7 +144,8 @@ def test_inference(args, model, test_dataset):
         images, labels = images.to(device), labels.to(device)
 
         # Inference
-        outputs = model(images)
+        with torch.no_grad():
+            outputs = model(images)
         batch_loss = criterion(outputs, labels)
         loss += batch_loss.item()
 

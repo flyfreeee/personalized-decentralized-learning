@@ -7,6 +7,8 @@ import numpy as np
 from torchvision import datasets, transforms
 import pandas as pd
 import random
+from partition import *
+
 
 def randomSplit(M, N, minV, maxV):
     res = []
@@ -94,11 +96,11 @@ def mnist_noniid_unequal(dataset, num_users):
     # Divide the shards into random chunks for every client
     # s.t the sum of these chunks = num_shards
 
-    if num_users == 5:
-        random_shard_size = np.array([200, 240, 280, 160, 320])
+    # if num_users == 5:
+    #     random_shard_size = np.array([200, 240, 280, 160, 320])
 
-    else:
-        random_shard_size = np.array(randomSplit(num_shards, num_users, min_shard, max_shard))
+    # else:
+    random_shard_size = np.array(randomSplit(num_shards, num_users, min_shard, max_shard))
 
     Di = pd.DataFrame(random_shard_size * num_imgs)
     Di.to_csv(str(num_users)+ 'mnist.csv', header=['data_size'])
@@ -208,7 +210,6 @@ def cifar_noniid(dataset, num_users):
 
 def cifar_noniid_unequal(dataset, num_users):
 
-
     num_shards, num_imgs = 2000, 25
     idx_shard = [i for i in range(num_shards)]
     dict_users = {i: np.array([]) for i in range(num_users)}
@@ -224,11 +225,11 @@ def cifar_noniid_unequal(dataset, num_users):
     min_shard = round(num_shards/num_users*1/5)
     max_shard = round(num_shards/num_users*2)
 
-    if num_users == 5:
-        random_shard_size = np.array([400, 380, 320, 460, 440])
+    # if num_users == 5:
+    #     random_shard_size = np.array([400, 380, 320, 460, 440])
 
-    else:
-        random_shard_size = np.array(randomSplit(num_shards, num_users, min_shard, max_shard))
+    # else:
+    random_shard_size = np.array(randomSplit(num_shards, num_users, min_shard, max_shard))
 
     Di = pd.DataFrame(random_shard_size * num_imgs)
     Di.to_csv(str(num_users)+'_cifar.csv')
@@ -237,7 +238,7 @@ def cifar_noniid_unequal(dataset, num_users):
 
         for i in range(num_users):
             # First assign each client 1 shard to ensure every client has
-            # atleast one shard of data
+            # at least one shard of data
             rand_set = set(np.random.choice(idx_shard, 1, replace=False))
             idx_shard = list(set(idx_shard) - rand_set)
             for rand in rand_set:
@@ -262,7 +263,6 @@ def cifar_noniid_unequal(dataset, num_users):
                     (dict_users[i], idxs[rand*num_imgs:(rand+1)*num_imgs]),
                     axis=0)
     else:
-
         for i in range(num_users):
             shard_size = random_shard_size[i]
             rand_set = set(np.random.choice(idx_shard, shard_size,
@@ -288,22 +288,19 @@ def cifar_noniid_unequal(dataset, num_users):
 
     return dict_users
 
-def data_partition(training_data, number_of_clients, non_iid_level):
-
-    if non_iid_level == 0:
-        num_items = int(len(training_data)/number_of_clients)
-        data_partition_profile, all_idxs = {}, [i for i in range(len(training_data))]
-        for i in range(number_of_clients):
-            data_partition_profile[i] = set(np.random.choice(all_idxs, num_items, replace=False))
-            all_idxs = list(set(all_idxs) - data_partition_profile[i])
-
-    else:
-
-
-
-        pass
-
-    return data_partition_profile
+# def data_partition(training_data, number_of_clients, non_iid_level):
+#
+#     if non_iid_level == 0:
+#         num_items = int(len(training_data)/number_of_clients)
+#         data_partition_profile, all_idxs = {}, [i for i in range(len(training_data))]
+#         for i in range(number_of_clients):
+#             data_partition_profile[i] = set(np.random.choice(all_idxs, num_items, replace=False))
+#             all_idxs = list(set(all_idxs) - data_partition_profile[i])
+#
+#     else:
+#         pass
+#
+#     return data_partition_profile
 
 
 if __name__ == '__main__':

@@ -36,24 +36,26 @@ def similarity_calculation(model_a, model_b): # TODO add temperature parameter t
     similarity = math.exp(cos(param_a, param_b))
     return similarity
 
-# server_model = {1:odict([])}
-# client_models = {2:Tensor([]), 5:Tensor([])}
+# server_model = {1:model(odict([]))}
+# client_models = {2:model(odict([])), 5:model(odict([]))}
 def personalized_aggregation(server_model, client_models):
 
     aggregated_models = {}
     server_idx = list(server_model.keys())[0]
-    server_param = server_model[server_idx]
+    server_param = server_model[server_idx].state_dict()
 
-    for idx, param in client_models.items():
+    for idx, i_model in client_models.items():
         similarities = {}
+        param = i_model.state_dict()
         similarities[server_idx] = similarity_calculation(param, server_param)
         aggregated_models[idx] = copy.deepcopy(server_param)
         for layer, params in aggregated_models[idx].items():
             params *= similarities[server_idx]
 
-        for neighbor, n_param in client_models.items():
+        for neighbor, n_model in client_models.items():
             if neighbor == idx:
                 continue
+            n_param = n_model.state_dict()
             similarities[neighbor] = similarity_calculation(param, n_param)
             to_be_aggregated = copy.deepcopy(n_param)
             for layer, params in to_be_aggregated.items():
@@ -133,14 +135,25 @@ if __name__ == '__main__':
     cv_loss, cv_acc = [], []
     print_every = 2
     val_loss_pre, counter = 0, 0
+
+
+
     info = pd.DataFrame(columns=['test_acc', 'test_loss', 'train_acc', 'train_loss'])
     # client_will = args.client_will
 
     aggregated_models_all = {}
-    clients_model = {}
-    idxs_users = list(user_groups.keys())
-    for idx in idxs_users:
-        clients_model[idx] = global_model.state_dict()
+    client_models = {}
+    idx_users = list(user_groups.keys())
+    info = []
+    info2 = []
+    for idx in idx_users:
+        info.append(pd.DataFrame(columns=['acc', 'loss']))
+
+    for idx in idx_users:
+        info2.append(pd.DataFrame(columns=['acc', 'loss']))
+
+    for idx in idx_users:
+        client_models[idx] = copy.deepcopy(global_model)
 
     for epoch in tqdm(range(args.epochs)):
         local_weights, local_losses, local_acc = [], [], []
@@ -150,18 +163,20 @@ if __name__ == '__main__':
 
         aggregated_models_all = {0: [], 1: [], 2: [], 3: [], 4: []}
 
-        for idx in idxs_users:
+        for idx in idx_users:
 
             neighbor_models = {}
 
             for one in args.neighbors[idx]:
-                neighbor_models[one] = clients_model[one]
-            aggregated_models = personalized_aggregation({idx: clients_model[idx]}, neighbor_models)
+                neighbor_models[one] = client_models[one]
+            aggregated_models = personalized_aggregation({idx: client_models[idx]}, neighbor_models)
 
             for idx, model in aggregated_models.items():
                 aggregated_models_all[idx].append(model)
 
-        for idx in idxs_users:
+        result = ''
+
+        for idx in idx_users:
             # if client_will[epoch][idx]:
             local_model = LocalUpdate(args=args, dataset=train_dataset,
                                       idxs=user_groups[idx], logger=logger)
@@ -169,10 +184,15 @@ if __name__ == '__main__':
             aggregated_models = aggregated_models_all[idx]
 
             w, train_loss = local_model.update_weights(
-                copy.deepcopy(clients_model[idx]), aggregated_models, global_round=epoch)
-            acc, loss = local_model.inference(model=global_model)
+                copy.deepcopy(client_models[idx]), aggregated_models, global_round=epoch)
+            acc, loss = local_model.inference(model=client_models[idx])
 
-            clients_model[idx] = copy.deepcopy(w)
+            client_models[idx].load_state_dict(copy.deepcopy(w))
+
+            info[idx] = info[idx].append([{'acc': acc, 'loss': loss}])
+
+            # result += f'client {idx}: accuracy = {acc}, loss = {loss}\n'
+
             # local_weights.append(copy.deepcopy(w))
             # local_losses.append(copy.deepcopy(train_loss))
             # local_acc.append(acc)
@@ -182,12 +202,18 @@ if __name__ == '__main__':
         # loss_avg = sum(local_losses) / len(local_losses)
         # acc_avg = sum(local_acc) / len(local_acc)
         #
-        # test_acc, test_loss = test_inference(args, global_model, test_dataset)
+        for idx in idx_users:
+            test_acc, test_loss = test_inference(args, client_models[idx], test_dataset)
+            info2[idx] = info2[idx].append([{'acc': test_acc, 'loss': test_loss}])
+            # print(f'client {idx}: accuracy = {test_acc}, loss = {test_loss}')
 
-        #
-        #
+
         # info = info.append([{'test_acc': test_acc, 'test_loss': test_loss, 'train_acc': acc_avg, 'train_loss': loss_avg}])
         # info.to_csv(str(args.num_users)+'user_'+args.dataset + '_' + str(args.local_ep) +'_' + str(args.lr)+ '_with_free_will.csv', index=None)
+
+    for idx in idx_users:
+        info[idx].to_csv(str(args.num_users)+'user_'+args.dataset + '_' + str(args.local_ep) +'_' + str(args.lr)+'_'+str(idx)+'_personal test.csv', index=None)
+        info2[idx].to_csv(str(args.num_users) + 'user_' + args.dataset + '_' + str(args.local_ep) + '_' + str(args.lr) + '_' + str(idx) + '_global test.csv', index=None)
 
         # print global training loss after every 'i' rounds
 

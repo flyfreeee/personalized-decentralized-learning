@@ -33,6 +33,8 @@ def args_parser():
 
     parser.add_argument('--lamda', type=float, default=configs.lamda,
                         help='regularization parameter')
+    parser.add_argument('--non_iid_level', type=float, default=configs.noniidlevel,
+                        help='non-iid level')
 
     # model arguments
     parser.add_argument('--model', type=str, default=configs.model, help='model name')

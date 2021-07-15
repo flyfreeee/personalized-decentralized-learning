@@ -4,18 +4,17 @@
 
 class Configs(object):
     def __init__(self):
-        self.data = 'mnist'
+        self.data = 'cifar'
         self.user_num = 5
         self.gpu = 0
-        self.rounds = 150
+        self.rounds = 10
         self.local_ep = 1
         self.iid = 0
         self.unequal = 1
         self.frac = 1
-        self.lr = 0.005
+        self.lr = 0.01
         self.model = 'cnn'
         if self.data == 'cifar':
-
             self.batch_size = 50
         else:
             self.batch_size = 10
@@ -34,6 +33,7 @@ class Configs(object):
 
         self.neighbors = {0: [1, 4], 1: [0, 2, 3], 2: [1, 3], 3: [1, 2, 4], 4: [0, 3]}
         self.lamda = 0.1
+        self.noniidlevel = 0.8
 
 if __name__ == '__main__':
     config = Configs()
