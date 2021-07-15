@@ -5,6 +5,7 @@
 import argparse
 from configs import Configs
 
+
 def args_parser():
     configs = Configs()
 
@@ -27,14 +28,16 @@ def args_parser():
                         help='learning rate')
     parser.add_argument('--momentum', type=float, default=0.5,
                         help='SGD momentum (default: 0.5)')
-
     parser.add_argument('--neighbors', type=dict, default=configs.neighbors,
                         help='neighborhoods connections')
-
     parser.add_argument('--lamda', type=float, default=configs.lamda,
                         help='regularization parameter')
     parser.add_argument('--non_iid_level', type=float, default=configs.noniidlevel,
                         help='non-iid level')
+    parser.add_argument('--personalized', type=float, default=configs.personalized,
+                        help='whether perform personalized aggregation')
+    parser.add_argument('--tau', type=float, default=configs.tau,
+                        help='temperature for similarity calculation')
 
     # model arguments
     parser.add_argument('--model', type=str, default=configs.model, help='model name')
@@ -74,6 +77,7 @@ def args_parser():
     parser.add_argument('--seed', type=int, default=1, help='random seed')
     args = parser.parse_args()
     return args
+
 
 if __name__ == '__main__':
     args_parser()

@@ -1,25 +1,28 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# Python version: 3.6
+# Python version: 3.7
 
 import os
 import copy
 import time
-import numpy as np
-from tqdm import tqdm
+import random
 import math
+import pandas as pd
+import numpy as np
 import torch
 import torch.nn as nn
+from datetime import datetime
+from tqdm import tqdm
 from tensorboardX import SummaryWriter
 
 from options import args_parser
 from update import LocalUpdate, test_inference
 from models import MLP, CNNMnist, CNNFashion_Mnist, CNNCifar, googlenet, ResNet18, AlexNet, LeNet
 from utils import get_dataset, average_weights, exp_details
-import pandas as pd
-import random
+
 from cjltest.models import RNNModel
 from cjltest.utils_model import MySGD
+
 
 def get_parameter_number(net):
     total_num = sum(p.numel() for p in net.parameters())
@@ -27,19 +30,24 @@ def get_parameter_number(net):
     return {'Total': total_num, 'Trainable': trainable_num}
 
 
-def similarity_calculation(model_a, model_b): # TODO add temperature parameter tau
-
+def similarity_calculation(model_a, model_b, tau):
     param_a = torch.cat([params.view(-1) for layer, params in model_a.items()])
     param_b = torch.cat([params.view(-1) for layer, params in model_b.items()])
 
     cos = nn.CosineSimilarity(dim=0, eps=1e-6)
-    similarity = math.exp(cos(param_a, param_b))
+    similarity = math.exp(cos(param_a, param_b) / tau)
+
     return similarity
 
-# server_model = {1:model(odict([]))}
-# client_models = {2:model(odict([])), 5:model(odict([]))}
-def personalized_aggregation(server_model, client_models):
 
+''' input: 
+    server_model = {1:model(odict([]))}
+    client_models = {2:model(odict([])), 5:model(odict([]))}
+    
+    return aggregated_models = {2:odict([]), 5:odict([])}'''
+
+
+def personalized_aggregation(server_model, client_models):
     aggregated_models = {}
     server_idx = list(server_model.keys())[0]
     server_param = server_model[server_idx].state_dict()
@@ -47,7 +55,7 @@ def personalized_aggregation(server_model, client_models):
     for idx, i_model in client_models.items():
         similarities = {}
         param = i_model.state_dict()
-        similarities[server_idx] = similarity_calculation(param, server_param)
+        similarities[server_idx] = similarity_calculation(param, server_param, args.tau)
         aggregated_models[idx] = copy.deepcopy(server_param)
         for layer, params in aggregated_models[idx].items():
             params *= similarities[server_idx]
@@ -56,10 +64,10 @@ def personalized_aggregation(server_model, client_models):
             if neighbor == idx:
                 continue
             n_param = n_model.state_dict()
-            similarities[neighbor] = similarity_calculation(param, n_param)
+            similarities[neighbor] = similarity_calculation(param, n_param, args.tau)
             to_be_aggregated = copy.deepcopy(n_param)
             for layer, params in to_be_aggregated.items():
-                aggregated_models[idx][layer] += similarities[neighbor]*params
+                aggregated_models[idx][layer] += similarities[neighbor] * params
 
         total_similarity = sum(similarities.values())
         for layer, params in aggregated_models[idx].items():
@@ -67,35 +75,34 @@ def personalized_aggregation(server_model, client_models):
 
     return aggregated_models
 
-# if __name__ == '__main__':
-#     server_model = {1: torch.Tensor([1, 2])}
-#     client_models = {2: torch.Tensor([2, 3]), 5: torch.Tensor([-5, 1])}
-#     personalized_aggregation(server_model, client_models)
 
 if __name__ == '__main__':
 
-    np.random.seed(0)
-    torch.random.manual_seed(0)
-    random.seed(0)
+    seed = -1
+    if seed < 0:
+        seed = random.randint(0, 100000)
+    np.random.seed(seed)
+    torch.random.manual_seed(seed)
+    random.seed(seed)
+
     start_time = time.time()
     acc_list = []
     loss_list = []
+
     # define paths
     path_project = os.path.abspath('..')
     logger = SummaryWriter('../logs')
 
     args = args_parser()
     exp_details(args)
-
-
     device = torch.device('cuda' if args.gpu else 'cpu')
 
     # load dataset and user groups
     train_dataset, test_dataset, user_groups = get_dataset(args)
 
-    # BUILD MODEL
+    # build model
     if args.model == 'cnn':
-        # Convolutional neural netork
+        # Convolutional neural network
         if args.dataset == 'mnist':
             global_model = CNNMnist(args=args)
         elif args.dataset == 'fmnist':
@@ -125,7 +132,6 @@ if __name__ == '__main__':
 
     global_model.to(device)
     global_model.train()
-    # print(global_model)
 
     # copy weights
     global_weights = global_model.state_dict()
@@ -136,84 +142,83 @@ if __name__ == '__main__':
     print_every = 2
     val_loss_pre, counter = 0, 0
 
-
-
-    info = pd.DataFrame(columns=['test_acc', 'test_loss', 'train_acc', 'train_loss'])
     # client_will = args.client_will
 
     aggregated_models_all = {}
     client_models = {}
     idx_users = list(user_groups.keys())
-    info = []
-    info2 = []
+    info_personal = []
+    info_global = []
     for idx in idx_users:
-        info.append(pd.DataFrame(columns=['acc', 'loss']))
+        info_personal.append(pd.DataFrame(columns=['acc', 'loss']))
 
     for idx in idx_users:
-        info2.append(pd.DataFrame(columns=['acc', 'loss']))
+        info_global.append(pd.DataFrame(columns=['acc', 'loss']))
 
     for idx in idx_users:
         client_models[idx] = copy.deepcopy(global_model)
 
     for epoch in tqdm(range(args.epochs)):
+
         local_weights, local_losses, local_acc = [], [], []
-        print(f'\n | Global Training Round : {epoch+1} |\n')
+        print(f'\n | Global Training Round : {epoch + 1} |\n')
 
         global_model.train()
 
         aggregated_models_all = {0: [], 1: [], 2: [], 3: [], 4: []}
 
+        # communication
         for idx in idx_users:
 
+            # 'client' sends original models to 'server'
             neighbor_models = {}
 
-            for one in args.neighbors[idx]:
-                neighbor_models[one] = client_models[one]
-            aggregated_models = personalized_aggregation({idx: client_models[idx]}, neighbor_models)
+            for neighbor in args.neighbors[idx]:
+                neighbor_models[neighbor] = client_models[neighbor]
 
-            for idx, model in aggregated_models.items():
-                aggregated_models_all[idx].append(model)
+            # 'server' performs model aggregation
+            if args.personalized:
+                aggregated_models = personalized_aggregation({idx: client_models[idx]}, neighbor_models)
+            else:
+                aggregated_models = {}
+                for neighbor, model in neighbor_models.items():
+                    aggregated_models[neighbor] = copy.deepcopy(model.state_dict())
 
-        result = ''
+            # 'server' sends aggregated models to 'client'
+            for receiver, model in aggregated_models.items():
+                aggregated_models_all[receiver].append(model)
 
+        # local update
         for idx in idx_users:
-            # if client_will[epoch][idx]:
             local_model = LocalUpdate(args=args, dataset=train_dataset,
                                       idxs=user_groups[idx], logger=logger)
 
-            aggregated_models = aggregated_models_all[idx]
+            my_aggregated_models = aggregated_models_all[idx]
 
             w, train_loss = local_model.update_weights(
-                copy.deepcopy(client_models[idx]), aggregated_models, global_round=epoch)
+                copy.deepcopy(client_models[idx]), my_aggregated_models, global_round=epoch)
+
+            # test on personal test data
             acc, loss = local_model.inference(model=client_models[idx])
 
             client_models[idx].load_state_dict(copy.deepcopy(w))
 
-            info[idx] = info[idx].append([{'acc': acc, 'loss': loss}])
-
-            # result += f'client {idx}: accuracy = {acc}, loss = {loss}\n'
+            info_personal[idx] = info_personal[idx].append([{'acc': acc, 'loss': loss}])
 
             # local_weights.append(copy.deepcopy(w))
             # local_losses.append(copy.deepcopy(train_loss))
             # local_acc.append(acc)
-        #
-        #
-        print(epoch)
+
         # loss_avg = sum(local_losses) / len(local_losses)
         # acc_avg = sum(local_acc) / len(local_acc)
-        #
+
+        print(epoch)
+
+        # test on global test data
         for idx in idx_users:
             test_acc, test_loss = test_inference(args, client_models[idx], test_dataset)
-            info2[idx] = info2[idx].append([{'acc': test_acc, 'loss': test_loss}])
+            info_global[idx] = info_global[idx].append([{'acc': test_acc, 'loss': test_loss}])
             # print(f'client {idx}: accuracy = {test_acc}, loss = {test_loss}')
-
-
-        # info = info.append([{'test_acc': test_acc, 'test_loss': test_loss, 'train_acc': acc_avg, 'train_loss': loss_avg}])
-        # info.to_csv(str(args.num_users)+'user_'+args.dataset + '_' + str(args.local_ep) +'_' + str(args.lr)+ '_with_free_will.csv', index=None)
-
-    for idx in idx_users:
-        info[idx].to_csv(str(args.num_users)+'user_'+args.dataset + '_' + str(args.local_ep) +'_' + str(args.lr)+'_'+str(idx)+'_personal test.csv', index=None)
-        info2[idx].to_csv(str(args.num_users) + 'user_' + args.dataset + '_' + str(args.local_ep) + '_' + str(args.lr) + '_' + str(idx) + '_global test.csv', index=None)
 
         # print global training loss after every 'i' rounds
 
@@ -222,20 +227,26 @@ if __name__ == '__main__':
         #     print(f'Training Loss : {loss_avg}')
         #     print('Train Accuracy: {:.2f}% \n'.format(100*acc_avg))
 
+    # save records
+    framework = 'personalized' if args.personalized else 'baseline'
+    for idx in idx_users:
+        info_personal[idx].to_csv(
+            '../records/' + framework + '_' + str(args.num_users) + 'user_' + args.dataset + '_' + str(args.local_ep) +
+            '_' + str(args.lr) + '_' + str(idx) + '_' + datetime.now().strftime('%d-%H') + '_personal test.csv', index=None)
+        info_global[idx].to_csv(
+            '../records/' + framework + '_' + str(args.num_users) + 'user_' + args.dataset + '_' + str(args.local_ep) +
+            '_' + str(args.lr) + '_' + str(idx) + '_' + datetime.now().strftime('%d-%H') + '_global test.csv', index=None)
 
+    print('\n Total Run Time: {0:0.4f}'.format(time.time() - start_time))
+    print(f'seed: {seed}')
 
     # Saving the objects train_loss and train_accuracy:
-    file_name = 'save/objects/{}_{}_{}_C[{}]_iid[{}]_E[{}]_B[{}].pkl'.\
-        format(args.dataset, args.model, args.epochs, args.frac, args.iid,
-               args.local_ep, args.local_bs)
-
-
-
+    # file_name = 'save/objects/{}_{}_{}_C[{}]_iid[{}]_E[{}]_B[{}].pkl'. \
+    #     format(args.dataset, args.model, args.epochs, args.frac, args.iid,
+    #            args.local_ep, args.local_bs)
 
     # with open(file_name, 'wb') as f:
     #     pickle.dump([train_loss, train_accuracy], f)
-
-    print('\n Total Run Time: {0:0.4f}'.format(time.time()-start_time))
 
     # PLOTTING (optional)
     # import matplotlib
@@ -262,3 +273,7 @@ if __name__ == '__main__':
     #             format(args.dataset, args.model, args.epochs, args.frac,
     #                    args.iid, args.local_ep, args.local_bs))
 
+# if __name__ == '__main__':
+#     server_model = {1: torch.Tensor([1, 2])}
+#     client_models = {2: torch.Tensor([2, 3]), 5: torch.Tensor([-5, 1])}
+#     personalized_aggregation(server_model, client_models)

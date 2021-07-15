@@ -8,6 +8,7 @@ from torch.utils.data import DataLoader, Dataset
 from dloptimizer import dlOptimizer
 from sklearn.model_selection import train_test_split
 
+
 class DatasetSplit(Dataset):
     """An abstract Dataset class wrapped around Pytorch Dataset class.
     """
@@ -28,10 +29,8 @@ class LocalUpdate(object):
     def __init__(self, args, dataset, idxs, logger):
         self.args = args
         self.logger = logger
-        self.trainloader, self.validloader, self.testloader = self.train_val_test(
-            dataset, list(idxs))
+        self.trainloader, self.validloader, self.testloader = self.train_val_test(dataset, list(idxs))
         self.device = 'cuda' if args.gpu else 'cpu'
-        # Default criterion set to NLL loss function
 
         if args.dataset == 'cifar' or 'mnist' or 'fmnist':
             self.criterion = nn.NLLLoss().to(self.device)
@@ -45,12 +44,8 @@ class LocalUpdate(object):
         """
         # split indexes for train, validation, and test (80, 10, 10)
 
-        idxs_train, idxs_tmp = train_test_split(idxs, test_size = 0.2, random_state = 42)
-        idxs_val, idxs_test = train_test_split(idxs_tmp, test_size = 0.5, random_state = 42)
-
-        # idxs_train = idxs[:int(0.8*len(idxs))]
-        # idxs_val = idxs[int(0.8*len(idxs)):int(0.9*len(idxs))]
-        # idxs_test = idxs[int(0.9*len(idxs)):]
+        idxs_train, idxs_tmp = train_test_split(idxs, test_size=0.2, random_state=42)
+        idxs_val, idxs_test = train_test_split(idxs_tmp, test_size=0.5, random_state=42)
 
         trainloader = DataLoader(DatasetSplit(dataset, idxs_train),
                                  batch_size=self.args.local_bs, shuffle=True)
@@ -60,7 +55,7 @@ class LocalUpdate(object):
                                 batch_size=int(len(idxs_test)/10), shuffle=False)
         return trainloader, validloader, testloader
 
-    def update_weights(self, model, aggregated_models, global_round):  # TODO training function needs to be modified
+    def update_weights(self, model, aggregated_models, global_round):
         # Set mode to train model
         model.train()
         epoch_loss = []
@@ -133,10 +128,11 @@ def test_inference(args, model, test_dataset):
 
     device = 'cuda' if args.gpu else 'cpu'
 
-    if args.dataset == 'mnist' or 'fmnist':
+    if args.dataset == 'cifar' or 'mnist' or 'fmnist':
         criterion = nn.NLLLoss().to(device)
     else:
         criterion = nn.CrossEntropyLoss().to(device)
+
     testloader = DataLoader(test_dataset, batch_size=128,
                             shuffle=False)
 

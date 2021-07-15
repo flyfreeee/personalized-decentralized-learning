@@ -22,6 +22,7 @@ def randomSplit(M, N, minV, maxV):
     print(res)
     return res
 
+
 def mnist_iid(dataset, num_users):
     """
     Sample I.I.D. client data from MNIST dataset
@@ -192,8 +193,6 @@ def cifar_noniid(dataset, num_users):
     # labels = dataset.train_labels.numpy()
     labels = np.array(dataset.targets)
 
-
-
     # sort labels
     idxs_labels = np.vstack((idxs, labels))
     idxs_labels = idxs_labels[:, idxs_labels[1, :].argsort()]
@@ -207,6 +206,7 @@ def cifar_noniid(dataset, num_users):
             dict_users[i] = np.concatenate(
                 (dict_users[i], idxs[rand*num_imgs:(rand+1)*num_imgs]), axis=0)
     return dict_users
+
 
 def cifar_noniid_unequal(dataset, num_users):
 
