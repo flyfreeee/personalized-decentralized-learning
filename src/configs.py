@@ -7,7 +7,7 @@ class Configs(object):
         self.data = 'cifar'
         self.user_num = 6
         self.gpu = 0
-        self.rounds = 150
+        self.rounds = 3
         self.local_ep = 1
         self.personalized = False
         self.tau = 0.5

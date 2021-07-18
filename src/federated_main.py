@@ -182,8 +182,9 @@ if __name__ == '__main__':
                 aggregated_models = personalized_aggregation({idx: client_models[idx]}, neighbor_models)
             else:
                 aggregated_models = {}
-                for neighbor, model in neighbor_models.items():
-                    aggregated_models[neighbor] = copy.deepcopy(model.state_dict())
+
+                for neighbor in neighbor_models.keys():
+                    aggregated_models[neighbor] = copy.deepcopy(client_models[idx].state_dict())
 
             # 'server' sends aggregated models to 'client'
             for receiver, model in aggregated_models.items():
@@ -213,7 +214,7 @@ if __name__ == '__main__':
             info_personal[idx] = info_personal[idx].append([{'acc': acc, 'loss': loss}])
 
             # local_weights.append(copy.deepcopy(w))
-            local_losses.append(copy.deepcopy(loss))
+            local_losses.append(copy.deepcopy(train_loss))
             local_acc.append(acc)
 
         loss_avg = sum(local_losses) / len(local_losses)
@@ -262,29 +263,29 @@ if __name__ == '__main__':
     #     pickle.dump([train_loss, train_accuracy], f)
 
     # PLOTTING (optional)
-    # import matplotlib
-    # import matplotlib.pyplot as plt
-    # matplotlib.use('Agg')
+    import matplotlib
+    import matplotlib.pyplot as plt
+    matplotlib.use('Agg')
 
     # Plot Loss curve
-    # plt.figure()
-    # plt.title('Training Loss vs Communication rounds')
-    # plt.plot(range(len(train_loss)), train_loss, color='r')
-    # plt.ylabel('Training loss')
-    # plt.xlabel('Communication Rounds')
-    # plt.savefig('../save/fed_{}_{}_{}_C[{}]_iid[{}]_E[{}]_B[{}]_loss.png'.
-    #             format(args.dataset, args.model, args.epochs, args.frac,
-    #                    args.iid, args.local_ep, args.local_bs))
-    #
-    # # Plot Average Accuracy vs Communication rounds
-    # plt.figure()
-    # plt.title('Average Accuracy vs Communication rounds')
-    # plt.plot(range(len(train_accuracy)), train_accuracy, color='k')
-    # plt.ylabel('Average Accuracy')
-    # plt.xlabel('Communication Rounds')
-    # plt.savefig('../save/fed_{}_{}_{}_C[{}]_iid[{}]_E[{}]_B[{}]_acc.png'.
-    #             format(args.dataset, args.model, args.epochs, args.frac,
-    #                    args.iid, args.local_ep, args.local_bs))
+    plt.figure()
+    plt.title('Training Loss vs Communication rounds')
+    plt.plot(range(len(info)), info['loss'], color='r')
+    plt.ylabel('Training loss')
+    plt.xlabel('Communication Rounds')
+    plt.savefig('../save/fed_{}_{}_{}_{}_{}_C[{}]_iid[{}]_E[{}]_B[{}]_loss.png'.
+                format(framework, method, args.dataset, args.model, args.epochs, args.frac,
+                       args.iid, args.local_ep, args.local_bs))
+
+    # Plot Average Accuracy vs Communication rounds
+    plt.figure()
+    plt.title('Average Accuracy vs Communication rounds')
+    plt.plot(range(len(info)), info['acc'], color='k')
+    plt.ylabel('Average Accuracy')
+    plt.xlabel('Communication Rounds')
+    plt.savefig('../save/fed_{}_{}_{}_{}_{}_C[{}]_iid[{}]_E[{}]_B[{}]_acc.png'.
+                format(framework, method, args.dataset, args.model, args.epochs, args.frac,
+                       args.iid, args.local_ep, args.local_bs))
 
 # if __name__ == '__main__':
 #     server_model = {1: torch.Tensor([1, 2])}
