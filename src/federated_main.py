@@ -147,6 +147,7 @@ if __name__ == '__main__':
     aggregated_models_all = {}
     client_models = {}
     idx_users = list(user_groups.keys())
+    info = pd.DataFrame(columns=['acc', 'loss'])
     info_personal = []
     info_global = []
     for idx in idx_users:
@@ -165,7 +166,7 @@ if __name__ == '__main__':
 
         global_model.train()
 
-        aggregated_models_all = {0: [], 1: [], 2: [], 3: [], 4: []}
+        aggregated_models_all = {0: [], 1: [], 2: [], 3: [], 4: [], 5: []}
 
         # communication
         for idx in idx_users:
@@ -188,8 +189,14 @@ if __name__ == '__main__':
             for receiver, model in aggregated_models.items():
                 aggregated_models_all[receiver].append(model)
 
+        if args.aggregation:
+            for idx in idx_users:
+                received_model_weights = [copy.deepcopy(m) for m in aggregated_models_all[idx]]
+                client_models[idx].load_state_dict(average_weights(received_model_weights))
+
         # local update
         for idx in idx_users:
+
             local_model = LocalUpdate(args=args, dataset=train_dataset,
                                       idxs=user_groups[idx], logger=logger)
 
@@ -206,11 +213,12 @@ if __name__ == '__main__':
             info_personal[idx] = info_personal[idx].append([{'acc': acc, 'loss': loss}])
 
             # local_weights.append(copy.deepcopy(w))
-            # local_losses.append(copy.deepcopy(train_loss))
-            # local_acc.append(acc)
+            local_losses.append(copy.deepcopy(loss))
+            local_acc.append(acc)
 
-        # loss_avg = sum(local_losses) / len(local_losses)
-        # acc_avg = sum(local_acc) / len(local_acc)
+        loss_avg = sum(local_losses) / len(local_losses)
+        acc_avg = sum(local_acc) / len(local_acc)
+        info = info.append([{'acc': acc_avg, 'loss': loss_avg}])
 
         print(epoch)
 
@@ -229,13 +237,18 @@ if __name__ == '__main__':
 
     # save records
     framework = 'personalized' if args.personalized else 'baseline'
+    method = 'aggre' if args.aggregation else 'regul'
+
     for idx in idx_users:
         info_personal[idx].to_csv(
-            '../records/' + framework + '_' + str(args.num_users) + 'user_' + args.dataset + '_' + str(args.local_ep) +
+            '../records/' + framework + '_' + method + '_' + str(args.num_users) + 'user_' + args.dataset + '_' + str(args.local_ep) +
             '_' + str(args.lr) + '_' + str(idx) + '_' + datetime.now().strftime('%d-%H') + '_personal test.csv', index=None)
         info_global[idx].to_csv(
-            '../records/' + framework + '_' + str(args.num_users) + 'user_' + args.dataset + '_' + str(args.local_ep) +
+            '../records/' + framework + '_' + method + '_' + str(args.num_users) + 'user_' + args.dataset + '_' + str(args.local_ep) +
             '_' + str(args.lr) + '_' + str(idx) + '_' + datetime.now().strftime('%d-%H') + '_global test.csv', index=None)
+    info.to_csv(
+            '../records/' + framework + '_' + method + '_' + str(args.num_users) + 'user_' + args.dataset + '_' + str(args.local_ep) +
+            '_' + str(args.lr) + '_avg_' + datetime.now().strftime('%d-%H') + '_personal test.csv', index=None)
 
     print('\n Total Run Time: {0:0.4f}'.format(time.time() - start_time))
     print(f'seed: {seed}')

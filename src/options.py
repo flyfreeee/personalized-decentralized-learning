@@ -38,6 +38,9 @@ def args_parser():
                         help='whether perform personalized aggregation')
     parser.add_argument('--tau', type=float, default=configs.tau,
                         help='temperature for similarity calculation')
+    parser.add_argument('--aggregation', type=float, default=configs.aggregation,
+                        help='using simple aggregation')
+
 
     # model arguments
     parser.add_argument('--model', type=str, default=configs.model, help='model name')

@@ -93,19 +93,29 @@ def data_partition(training_data, number_of_clients, non_iid_level):
                 pref_dist[i] -= 1
                 client_list = list(set(client_list) - set([client]))
 
+        client_dict = {0: [1, 2], 1: [3, 4], 2: [5, 6], 3: [3, 4], 4: [1, 2], 5: [5, 6]}
 
         data_partition_profile, all_idxs = {}, [i for i in range(len(training_data))]
 
         for i in range(number_of_clients):
-            pref_number = int(round(data_dist[i] * non_iid_level))
+            pref_number1 = int(round(data_dist[i] * non_iid_level * 0.5))
+            pref_number2 = int(round(data_dist[i] * non_iid_level * 0.5))
 
-            if pref_number > len(data_dict[client_dict[i]]):
-                pref_number = len(data_dict[client_dict[i]])
+            if pref_number1 > len(data_dict[client_dict[i][0]]):
+                pref_number1 = len(data_dict[client_dict[i][0]])
+            if pref_number2 > len(data_dict[client_dict[i][1]]):
+                pref_number2 = len(data_dict[client_dict[i][1]])
 
-            data_dist[i] -= pref_number
-            data_partition_profile[i] = set(np.random.choice(data_dict[client_dict[i]], pref_number, replace=False))
+            data_dist[i] -= pref_number1
+            data_dist[i] -= pref_number2
+
+            tep1 =  set(np.random.choice(data_dict[client_dict[i][0]], pref_number1, replace=False))
+            tep2 =  set(np.random.choice(data_dict[client_dict[i][1]], pref_number2, replace=False))
+            data_partition_profile[i] = tep1.union(tep2)
             all_idxs = list(set(all_idxs) - data_partition_profile[i])
-            data_dict[client_dict[i]] = list(set(data_dict[client_dict[i]]) - data_partition_profile[i])
+
+            data_dict[client_dict[i][0]] = list(set(data_dict[client_dict[i][0]]) - tep1)
+            data_dict[client_dict[i][1]] = list(set(data_dict[client_dict[i][1]]) - tep2)
 
         for i in range(number_of_clients):
             rest_idxs = set(np.random.choice(all_idxs, data_dist[i], replace=False))
