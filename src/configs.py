@@ -6,10 +6,10 @@ class Configs(object):
     def __init__(self):
         self.data = 'cifar'
         self.user_num = 6
-        self.gpu = 0
+        self.gpu = 1
         self.rounds = 150
         self.local_ep = 1
-        self.personalized = False
+        self.personalized = True
         self.tau = 0.5
         self.aggregation = True
 

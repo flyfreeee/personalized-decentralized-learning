@@ -18,7 +18,7 @@ from tensorboardX import SummaryWriter
 from options import args_parser
 from update import LocalUpdate, test_inference
 from models import MLP, CNNMnist, CNNFashion_Mnist, CNNCifar, googlenet, ResNet18, AlexNet, LeNet
-from utils import get_dataset, average_weights, exp_details
+from utils import get_dataset, average_weights, exp_details, weighted_average_weights
 
 from cjltest.models import RNNModel
 from cjltest.utils_model import MySGD
@@ -38,6 +38,28 @@ def similarity_calculation(model_a, model_b, tau):
     similarity = math.exp(cos(param_a, param_b) / tau)
 
     return similarity
+
+
+def average_similarity(server_model, client_models):
+    averaged_similarities = {}
+    server_idx = list(server_model.keys())[0]
+    server_param = server_model[server_idx].state_dict()
+
+    for idx, i_model in client_models.items():
+        param = i_model.state_dict()
+        similarity_tmp = similarity_calculation(param, server_param, args.tau)
+
+        for neighbor, n_model in client_models.items():
+            if neighbor == idx:
+                continue
+            n_param = n_model.state_dict()
+            similarity_tmp += similarity_calculation(param, n_param, args.tau)
+
+        similarity_tmp /= len(client_models)
+
+        averaged_similarities[idx] = similarity_tmp
+
+    return averaged_similarities
 
 
 ''' input: 
@@ -145,6 +167,7 @@ if __name__ == '__main__':
     # client_will = args.client_will
 
     aggregated_models_all = {}
+    similarities_all = {}
     client_models = {}
     idx_users = list(user_groups.keys())
     info = pd.DataFrame(columns=['acc', 'loss'])
@@ -167,6 +190,7 @@ if __name__ == '__main__':
         global_model.train()
 
         aggregated_models_all = {0: [], 1: [], 2: [], 3: [], 4: [], 5: []}
+        similarities_all = {0: [], 1: [], 2: [], 3: [], 4: [], 5: []}
 
         # communication
         for idx in idx_users:
@@ -178,21 +202,21 @@ if __name__ == '__main__':
                 neighbor_models[neighbor] = client_models[neighbor]
 
             # 'server' performs model aggregation
-            if args.personalized:
-                aggregated_models = personalized_aggregation({idx: client_models[idx]}, neighbor_models)
-            else:
-                aggregated_models = {}
-                for neighbor, model in neighbor_models.items():
-                    aggregated_models[neighbor] = copy.deepcopy(model.state_dict())
+            aggregated_models = {}
+            for neighbor in neighbor_models.keys():
+                aggregated_models[neighbor] = copy.deepcopy(client_models[idx].state_dict())
+            similarities = average_similarity({idx: client_models[idx]}, neighbor_models)
 
             # 'server' sends aggregated models to 'client'
             for receiver, model in aggregated_models.items():
                 aggregated_models_all[receiver].append(model)
 
-        if args.aggregation:
-            for idx in idx_users:
-                received_model_weights = [copy.deepcopy(m) for m in aggregated_models_all[idx]]
-                client_models[idx].load_state_dict(average_weights(received_model_weights))
+            for receiver, similarity in similarities.items():
+                similarities_all[receiver].append(similarity)
+
+        for idx in idx_users:
+            received_model_weights = [copy.deepcopy(m) for m in aggregated_models_all[idx]]
+            client_models[idx].load_state_dict(weighted_average_weights(received_model_weights, similarities_all[idx]))
 
         # local update
         for idx in idx_users:
