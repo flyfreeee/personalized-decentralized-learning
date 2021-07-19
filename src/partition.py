@@ -15,6 +15,7 @@ def randomSplit(M, N, minV, maxV):
     print(res)
     return res
 
+
 def uniform(N, k):
     """Uniform distribution of 'N' items into 'k' groups."""
     dist = []
@@ -25,6 +26,7 @@ def uniform(N, k):
     # Return shuffled distribution
     random.shuffle(dist)
     return dist
+
 
 def normal(N, k):
     """Normal distribution of 'N' items into 'k' groups."""
@@ -50,6 +52,7 @@ def data_organize(idxs_labels, labels):
     for i in range(len(idxs_labels[1, :])):
         data_dict[idxs_labels[1, i]].append(idxs_labels[0, i])
     return data_dict
+
 
 def data_partition(training_data, number_of_clients, non_iid_level):
 
@@ -124,6 +127,7 @@ def data_partition(training_data, number_of_clients, non_iid_level):
 
     return data_partition_profile
 
+
 def data_partition_trial(training_data, number_of_clients):
     print("using this partition!")
     idxs = np.arange(len(training_data))
@@ -150,10 +154,7 @@ def data_partition_trial(training_data, number_of_clients):
 
     # else:
 
-
-
     average_labels = [0,1,2,4,5,7,8,9]
-
 
     data_partition_profile, all_idxs = {}, [i for i in range(len(training_data))]
 
@@ -173,11 +174,11 @@ def data_partition_trial(training_data, number_of_clients):
             data_partition_profile[i] = tep_set
             all_idxs = list(set(all_idxs) - data_partition_profile[i])
 
-
     for one in data_partition_profile:
         data_partition_profile[one] = np.array(list(data_partition_profile[one]))
     print(data_partition_profile)
     return data_partition_profile
+
 
 if __name__ == '__main__':
     dataset_train = datasets.MNIST('./data/mnist/', train=True, download=True,

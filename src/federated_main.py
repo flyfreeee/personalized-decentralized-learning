@@ -58,20 +58,26 @@ def personalized_aggregation(server_model, client_models):
         similarities[server_idx] = similarity_calculation(param, server_param, args.tau)
         aggregated_models[idx] = copy.deepcopy(server_param)
         for layer, params in aggregated_models[idx].items():
-            params *= similarities[server_idx]
+            params *= (1-args.self_attention) * similarities[server_idx]
 
         for neighbor, n_model in client_models.items():
             if neighbor == idx:
                 continue
             n_param = n_model.state_dict()
             similarities[neighbor] = similarity_calculation(param, n_param, args.tau)
-            to_be_aggregated = copy.deepcopy(n_param)
-            for layer, params in to_be_aggregated.items():
-                aggregated_models[idx][layer] += similarities[neighbor] * params
+            for layer, params in n_param.items():
+                aggregated_models[idx][layer] += (1-args.self_attention) * similarities[neighbor] * params
 
         total_similarity = sum(similarities.values())
         for layer, params in aggregated_models[idx].items():
             params /= total_similarity
+
+        for neighbor, n_model in client_models.items():
+            if neighbor == idx:
+                n_param = n_model.state_dict()
+                for layer, params in n_param.items():
+                    aggregated_models[idx][layer] += args.self_attention * params
+                break
 
     return aggregated_models
 
@@ -148,6 +154,7 @@ if __name__ == '__main__':
     client_models = {}
     idx_users = list(user_groups.keys())
     info = pd.DataFrame(columns=['acc', 'loss'])
+    info2 = pd.DataFrame(columns=['acc', 'loss'])
     info_personal = []
     info_global = []
     for idx in idx_users:
@@ -191,9 +198,15 @@ if __name__ == '__main__':
                 aggregated_models_all[receiver].append(model)
 
         if args.aggregation:
-            for idx in idx_users:
-                received_model_weights = [copy.deepcopy(m) for m in aggregated_models_all[idx]]
-                client_models[idx].load_state_dict(average_weights(received_model_weights))
+            if args.personalized:
+                for idx in idx_users:
+                    received_model_weights = [copy.deepcopy(m) for m in aggregated_models_all[idx]]
+                    client_models[idx].load_state_dict(average_weights(received_model_weights))
+            else:
+                for idx in idx_users:
+                    received_model_weights = [copy.deepcopy(m) for m in aggregated_models_all[idx]]
+                    received_model_weights.append(client_models[idx])
+                    client_models[idx].load_state_dict(average_weights(received_model_weights))
 
         # local update
         for idx in idx_users:
@@ -224,10 +237,17 @@ if __name__ == '__main__':
         print(epoch)
 
         # test on global test data
+        global_losses = []
+        global_acc = []
         for idx in idx_users:
             test_acc, test_loss = test_inference(args, client_models[idx], test_dataset)
             info_global[idx] = info_global[idx].append([{'acc': test_acc, 'loss': test_loss}])
-            # print(f'client {idx}: accuracy = {test_acc}, loss = {test_loss}')
+            global_losses.append(test_loss)
+            global_acc.append(test_acc)
+        global_loss_avg = sum(global_losses) / len(global_losses)
+        global_acc_avg = sum(global_acc) / len(global_acc)
+        info2 = info2.append([{'acc': global_acc_avg, 'loss': global_loss_avg}])
+
 
         # print global training loss after every 'i' rounds
 
@@ -250,6 +270,10 @@ if __name__ == '__main__':
     info.to_csv(
             '../records/' + framework + '_' + method + '_' + str(args.num_users) + 'user_' + args.dataset + '_' + str(args.local_ep) +
             '_' + str(args.lr) + '_avg_' + datetime.now().strftime('%d-%H') + '_personal test.csv', index=None)
+    info2.to_csv(
+        '../records/' + framework + '_' + method + '_' + str(args.num_users) + 'user_' + args.dataset + '_' + str(
+            args.local_ep) +
+        '_' + str(args.lr) + '_avg_' + datetime.now().strftime('%d-%H') + '_global test.csv', index=None)
 
     print('\n Total Run Time: {0:0.4f}'.format(time.time() - start_time))
     print(f'seed: {seed}')
@@ -284,6 +308,25 @@ if __name__ == '__main__':
     plt.ylabel('Average Accuracy')
     plt.xlabel('Communication Rounds')
     plt.savefig('../save/fed_{}_{}_{}_{}_{}_C[{}]_iid[{}]_E[{}]_B[{}]_acc.png'.
+                format(framework, method, args.dataset, args.model, args.epochs, args.frac,
+                       args.iid, args.local_ep, args.local_bs))
+
+    plt.figure()
+    plt.title('Training Loss vs Communication rounds')
+    plt.plot(range(len(info)), info['loss'], color='r')
+    plt.ylabel('Training loss')
+    plt.xlabel('Communication Rounds')
+    plt.savefig('../save/fed_{}_{}_{}_{}_{}_C[{}]_iid[{}]_E[{}]_B[{}]_loss.png'.
+                format(framework, method, args.dataset, args.model, args.epochs, args.frac,
+                       args.iid, args.local_ep, args.local_bs))
+
+    # Plot Average Accuracy vs Communication rounds
+    plt.figure()
+    plt.title('Average Global Accuracy vs Communication rounds')
+    plt.plot(range(len(info2)), info2['acc'], color='k')
+    plt.ylabel('Average Global Accuracy')
+    plt.xlabel('Communication Rounds')
+    plt.savefig('../save/fed_{}_{}_{}_{}_{}_C[{}]_iid[{}]_E[{}]_B[{}]_acc_global.png'.
                 format(framework, method, args.dataset, args.model, args.epochs, args.frac,
                        args.iid, args.local_ep, args.local_bs))
 

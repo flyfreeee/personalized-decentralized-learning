@@ -10,6 +10,7 @@ from sampling import cifar_iid, cifar_noniid, cifar_noniid_unequal
 from options import args_parser
 from partition import *
 
+
 def get_dataset(args):
     """ Returns train and test datasets and a user group which is a dict where
     the keys are the user index and the values are the corresponding data for
@@ -120,7 +121,6 @@ def get_dataset(args):
                 # Chose euqal splits for every user
                 user_groups = mnist_noniid(train_dataset, args.num_users)
 
-
     return train_dataset, test_dataset, user_groups
 
 
@@ -152,6 +152,7 @@ def exp_details(args):
     print(f'    Local Batch size   : {args.local_bs}')
     print(f'    Local Epochs       : {args.local_ep}\n')
     return
+
 
 if __name__ == '__main__':
     args = args_parser()

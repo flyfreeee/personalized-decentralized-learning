@@ -41,6 +41,9 @@ def args_parser():
     parser.add_argument('--aggregation', type=float, default=configs.aggregation,
                         help='using simple aggregation')
 
+    parser.add_argument('--self_attention', type=float, default=configs.self_attention,
+                        help='self-attention of "cloud" personalized model')
+
 
     # model arguments
     parser.add_argument('--model', type=str, default=configs.model, help='model name')
