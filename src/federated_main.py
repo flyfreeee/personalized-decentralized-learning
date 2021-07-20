@@ -18,7 +18,7 @@ from tensorboardX import SummaryWriter
 from options import args_parser
 from update import LocalUpdate, test_inference
 from models import MLP, CNNMnist, CNNFashion_Mnist, CNNCifar, googlenet, ResNet18, AlexNet, LeNet
-from utils import get_dataset, average_weights, exp_details
+from utils import get_dataset, average_weights, exp_details, one_hop_average_weights
 
 from cjltest.models import RNNModel
 from cjltest.utils_model import MySGD
@@ -202,10 +202,16 @@ if __name__ == '__main__':
                 for idx in idx_users:
                     received_model_weights = [copy.deepcopy(m) for m in aggregated_models_all[idx]]
                     client_models[idx].load_state_dict(average_weights(received_model_weights))
+            elif args.one_hop:
+                for idx in idx_users:
+                    received_model_weights = [copy.deepcopy(client_models[idx].state_dict())]
+                    received_model_weights += [copy.deepcopy(m) for m in aggregated_models_all[idx]]
+                    similarities = [similarity_calculation(client_models[idx].state_dict(), m, args.tau) for m in received_model_weights]
+                    client_models[idx].load_state_dict(one_hop_average_weights(received_model_weights, similarities))
             else:
                 for idx in idx_users:
-                    received_model_weights = [copy.deepcopy(m) for m in aggregated_models_all[idx]]
-                    received_model_weights.append(client_models[idx])
+                    received_model_weights = [copy.deepcopy(client_models[idx].state_dict())]
+                    received_model_weights += [copy.deepcopy(m) for m in aggregated_models_all[idx]]
                     client_models[idx].load_state_dict(average_weights(received_model_weights))
 
         # local update
@@ -257,7 +263,7 @@ if __name__ == '__main__':
         #     print('Train Accuracy: {:.2f}% \n'.format(100*acc_avg))
 
     # save records
-    framework = 'personalized' if args.personalized else 'baseline'
+    framework = 'personalized' if args.personalized else ('onehop' if args.one_hop else 'baseline')
     method = 'aggre' if args.aggregation else 'regul'
 
     for idx in idx_users:

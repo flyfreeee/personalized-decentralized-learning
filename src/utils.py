@@ -136,6 +136,22 @@ def average_weights(w):
     return w_avg
 
 
+def one_hop_average_weights(w, similarities):
+    """
+    Returns the weighted average of the weights.
+    """
+    w_avg = copy.deepcopy(w[0])
+
+    for key in w_avg.keys():
+        w_avg[key] *= similarities[0]
+
+        for i in range(1, len(w)):
+            w_avg[key] += similarities[i] * w[i][key]
+        w_avg[key] = torch.div(w_avg[key].float(), sum(similarities))
+
+    return w_avg
+
+
 def exp_details(args):
     print('\nExperimental details:')
     print(f'    Model     : {args.model}')

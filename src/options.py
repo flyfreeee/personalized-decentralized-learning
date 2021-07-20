@@ -35,15 +35,15 @@ def args_parser():
     parser.add_argument('--non_iid_level', type=float, default=configs.noniidlevel,
                         help='non-iid level')
     parser.add_argument('--personalized', type=float, default=configs.personalized,
-                        help='whether perform personalized aggregation')
+                        help='whether to perform personalized aggregation')
     parser.add_argument('--tau', type=float, default=configs.tau,
                         help='temperature for similarity calculation')
     parser.add_argument('--aggregation', type=float, default=configs.aggregation,
                         help='using simple aggregation')
-
     parser.add_argument('--self_attention', type=float, default=configs.self_attention,
                         help='self-attention of "cloud" personalized model')
-
+    parser.add_argument('--one_hop', type=float, default=configs.one_hop,
+                        help='whether to use one hop similarity for weight calculation')
 
     # model arguments
     parser.add_argument('--model', type=str, default=configs.model, help='model name')
@@ -60,7 +60,7 @@ def args_parser():
                         help="number of filters for conv nets -- 32 for \
                         mini-imagenet, 64 for omiglot.")
     parser.add_argument('--max_pool', type=str, default='True',
-                        help="Whether use max pooling rather than \
+                        help="whether to use max pooling rather than \
                         strided convolutions")
 
     # other arguments
