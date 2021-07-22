@@ -11,9 +11,9 @@ class Configs(object):
         self.local_ep = 1
         self.personalized = True
         self.tau = 0.5
-        self.aggregation = False
+        self.aggregation = True
         self.self_attention = 0.33
-        self.one_hop = False
+        self.one_hop = True
 
         self.iid = 0
         self.unequal = 1

@@ -125,6 +125,25 @@ class LocalUpdate(object):
         accuracy = correct / total
         return accuracy, loss
 
+    def predict(self, model):
+        """ Returns the prediction labels on training set
+        """
+
+        model.eval()
+
+        for batch_idx, (images, labels) in enumerate(self.trainloader):
+            images, labels = images.to(self.device), labels.to(self.device)
+
+            # Inference
+            with torch.no_grad():
+                outputs = model(images)
+
+            # Prediction
+            _, pred_labels = torch.max(outputs, dim=1)
+            pred_labels = pred_labels.view(-1)
+
+        return pred_labels
+
 
 def test_inference(args, model, test_dataset):
     """ Returns the test accuracy and loss.

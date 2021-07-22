@@ -18,7 +18,7 @@ from tensorboardX import SummaryWriter
 from options import args_parser
 from update import LocalUpdate, test_inference
 from models import MLP, CNNMnist, CNNFashion_Mnist, CNNCifar, googlenet, ResNet18, AlexNet, LeNet
-from utils import get_dataset, average_weights, exp_details, one_hop_average_weights
+from utils import get_dataset, average_weights, exp_details, one_hop_average_weights2
 
 from cjltest.models import RNNModel
 from cjltest.utils_model import MySGD
@@ -39,6 +39,14 @@ def similarity_calculation(model_a, model_b, tau):
 
     return similarity
 
+def similarity_calculation_head(model_a, model_b, tau):
+    param_a = torch.cat([params.view(-1) for layer, params in list(model_a.items())[-2:]])
+    param_b = torch.cat([params.view(-1) for layer, params in list(model_b.items())[-2:]])
+
+    cos = nn.CosineSimilarity(dim=0, eps=1e-6)
+    similarity = math.exp(cos(param_a, param_b) / tau)
+
+    return similarity
 
 ''' input: 
     server_model = {1:model(odict([]))}
@@ -81,6 +89,41 @@ def personalized_aggregation(server_model, client_models):
 
     return aggregated_models
 
+def personalized_aggregation_head(server_model, client_models):
+    aggregated_models = {}
+    server_idx = list(server_model.keys())[0]
+    server_param = server_model[server_idx].state_dict()
+
+    for idx, i_model in client_models.items():
+        similarities = {}
+        param = i_model.state_dict()
+        similarities[server_idx] = similarity_calculation_head(param, server_param, args.tau)
+        aggregated_models[idx] = copy.deepcopy(server_param)
+        for layer, params in list(aggregated_models[idx].items())[-2:]:
+            params *= (1-args.self_attention) * similarities[server_idx]
+
+        for neighbor, n_model in client_models.items():
+            if neighbor == idx:
+                continue
+            n_param = n_model.state_dict()
+            similarities[neighbor] = similarity_calculation_head(param, n_param, args.tau)
+            for layer, params in list(n_param.items())[-2:]:
+                aggregated_models[idx][layer] += (1-args.self_attention) * similarities[neighbor] * params
+
+        total_similarity = sum(similarities.values())
+        for layer, params in list(aggregated_models[idx].items())[-2:]:
+            params /= total_similarity
+
+        for neighbor, n_model in client_models.items():
+            if neighbor == idx:
+                n_param = n_model.state_dict()
+                for layer, params in list(n_param.items())[:-2]:
+                    aggregated_models[idx][layer] = copy.deepcopy(params)
+                for layer, params in list(n_param.items())[-2:]:
+                    aggregated_models[idx][layer] += args.self_attention * params
+                break
+
+    return aggregated_models
 
 if __name__ == '__main__':
 
@@ -207,7 +250,7 @@ if __name__ == '__main__':
                     received_model_weights = [copy.deepcopy(client_models[idx].state_dict())]
                     received_model_weights += [copy.deepcopy(m) for m in aggregated_models_all[idx]]
                     similarities = [similarity_calculation(client_models[idx].state_dict(), m, args.tau) for m in received_model_weights]
-                    client_models[idx].load_state_dict(one_hop_average_weights(received_model_weights, similarities))
+                    client_models[idx].load_state_dict(one_hop_average_weights2(args, received_model_weights, similarities))
             else:
                 for idx in idx_users:
                     received_model_weights = [copy.deepcopy(client_models[idx].state_dict())]
