@@ -26,10 +26,12 @@ class DatasetSplit(Dataset):
 
 
 class LocalUpdate(object):
-    def __init__(self, args, dataset, idxs, logger):
+    def __init__(self, args, dataset, idxs, idxs_common, logger):
         self.args = args
         self.logger = logger
         self.trainloader, self.validloader, self.testloader = self.train_val_test(dataset, list(idxs))
+        self.commonloader = DataLoader(DatasetSplit(dataset, idxs_common), batch_size=500, shuffle=False)
+
         self.device = 'cuda' if args.gpu else 'cpu'
 
         if args.dataset == 'cifar' or 'mnist' or 'fmnist':
@@ -55,7 +57,9 @@ class LocalUpdate(object):
                                 batch_size=int(len(idxs_test) / 10), shuffle=False)
         return trainloader, validloader, testloader
 
-    def update_weights(self, model, aggregated_models, global_round):
+
+
+    def update_weights(self, model, aggregated_prediction, global_round):
         # Set mode to train model
         model.train()
         epoch_loss = []

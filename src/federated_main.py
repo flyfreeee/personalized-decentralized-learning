@@ -309,12 +309,14 @@ if __name__ == '__main__':
         for idx in idx_users:
 
             local_model = LocalUpdate(args=args, dataset=train_dataset,
-                                      idxs=user_groups[idx], logger=logger)
+                                      idxs=user_groups[idx], idxs_common=user_groups['common'], logger=logger)
 
             my_aggregated_models = aggregated_models_all[idx]
+            aggregated_prediction = torch.Tensor([])
+
 
             w, train_loss = local_model.update_weights(
-                copy.deepcopy(client_models[idx]), my_aggregated_models, global_round=epoch)
+                copy.deepcopy(client_models[idx]), aggregated_prediction, global_round=epoch)
 
             # test on personal test data
             acc, loss = local_model.inference(model=client_models[idx])

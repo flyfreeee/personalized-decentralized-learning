@@ -55,9 +55,23 @@ def data_organize(idxs_labels, labels):
     return data_dict
 
 
+def common_data_generate(training_data):
+    training_data
+    common_data = None
+
+    return training_data, common_data
+
+
+
 def data_partition(training_data, number_of_clients, non_iid_level):
 
     idxs = np.arange(len(training_data))
+
+    common_idxs = set(np.random.choice(idxs, 500, replace=False))
+    all_idxs = np.array(list(set(idxs) - common_idxs))
+
+    data_partition_profile = {}
+    data_partition_profile['common'] = common_idxs
 
     if type(training_data.targets).__name__ == 'list':
         labels = np.array(training_data.targets)
@@ -74,7 +88,7 @@ def data_partition(training_data, number_of_clients, non_iid_level):
 
     if non_iid_level == 0:
         num_items = int(len(training_data)/number_of_clients)
-        data_partition_profile, all_idxs = {}, [i for i in range(len(training_data))]
+
         for i in range(number_of_clients):
             data_partition_profile[i] = set(np.random.choice(all_idxs, num_items, replace=False))
             all_idxs = list(set(all_idxs) - data_partition_profile[i])
@@ -103,8 +117,6 @@ def data_partition(training_data, number_of_clients, non_iid_level):
         # for 15 users
         client_dict = {0: [1, 2], 1: [3, 4], 2: [1, 2], 3: [5, 6], 4: [1, 2], 5: [7, 8], 6: [3, 4], 7: [9, 0],
                        8: [5, 6], 9: [1, 2], 10: [9, 0], 11: [5, 6], 12: [3, 4], 13: [7, 8], 14: [3, 4]}
-
-        data_partition_profile, all_idxs = {}, [i for i in range(len(training_data))]
 
         for i in range(number_of_clients):
             pref_number1 = int(round(data_dist[i] * non_iid_level * 0.5))
