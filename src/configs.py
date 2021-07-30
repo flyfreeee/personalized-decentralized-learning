@@ -5,15 +5,16 @@
 class Configs(object):
     def __init__(self):
         self.data = 'cifar'
-        self.user_num = 6
+        self.user_num = 15
         self.gpu = 0
         self.rounds = 150
         self.local_ep = 1
         self.personalized = True
         self.tau = 0.5
-        self.aggregation = True
+        self.aggregation = False
         self.self_attention = 0.33
-        self.one_hop = True
+        self.one_hop = False
+        self.common_set = True
 
         self.iid = 0
         self.unequal = 1
@@ -37,7 +38,9 @@ class Configs(object):
         else:
             self.client_will = np.ones(self.user_num * self.rounds).reshape(self.rounds, self.user_num)
 
-        self.neighbors = {0: [1, 5], 1: [0, 2], 2: [1, 3], 3: [2, 4], 4: [3, 5], 5: [4, 0]}
+        # self.neighbors = {0: [1, 5], 1: [0, 2], 2: [1, 3], 3: [2, 4], 4: [3, 5], 5: [4, 0]}
+        # self.neighbors = {0: [1, 5], 1: [0, 2], 2: [1, 3], 3: [2], 4: [5, 6], 5: [4, 0], 6: [4]}
+        self.neighbors = {0: [14], 1: [2], 2: [1, 3, 13], 3: [2, 5], 4: [5], 5: [3, 4, 6, 7], 6: [5], 7: [5, 8], 8: [7, 9], 9: [8, 10], 10: [9, 11], 11: [10, 12], 12: [11], 13: [2, 14], 14: [13, 0]}
         self.lamda = 0.1
         self.noniidlevel = 0.5
 

@@ -39,6 +39,7 @@ def similarity_calculation(model_a, model_b, tau):
 
     return similarity
 
+
 def similarity_calculation_head(model_a, model_b, tau):
     param_a = torch.cat([params.view(-1) for layer, params in list(model_a.items())[-2:]])
     param_b = torch.cat([params.view(-1) for layer, params in list(model_b.items())[-2:]])
@@ -89,6 +90,7 @@ def personalized_aggregation(server_model, client_models):
 
     return aggregated_models
 
+
 def personalized_aggregation_head(server_model, client_models):
     aggregated_models = {}
     server_idx = list(server_model.keys())[0]
@@ -120,6 +122,52 @@ def personalized_aggregation_head(server_model, client_models):
                 for layer, params in list(n_param.items())[:-2]:
                     aggregated_models[idx][layer] = copy.deepcopy(params)
                 for layer, params in list(n_param.items())[-2:]:
+                    aggregated_models[idx][layer] += args.self_attention * params
+                break
+
+    return aggregated_models
+
+
+def similarity_calculation_based_on_prediction(model_a, model_b, server_idx, tau):
+    model = LocalUpdate(args=args, dataset=train_dataset,
+                        idxs=user_groups[server_idx], logger=logger)
+    pred_a = model.predict(model_a)
+    pred_b = model.predict(model_b)
+
+    cos = nn.CosineSimilarity(dim=0, eps=1e-6)
+    similarity = math.exp(cos(pred_a, pred_b) / tau)
+
+    return similarity
+
+
+def personalized_aggregation_based_on_prediction(server_model, client_models):
+    aggregated_models = {}
+    server_idx = list(server_model.keys())[0]
+    server_param = server_model[server_idx].state_dict()
+
+    for idx, i_model in client_models.items():
+        similarities = {}
+        similarities[server_idx] = similarity_calculation_based_on_prediction(i_model, server_model[server_idx], server_idx, args.tau)
+        aggregated_models[idx] = copy.deepcopy(server_param)
+        for layer, params in aggregated_models[idx].items():
+            params *= (1-args.self_attention) * similarities[server_idx]
+
+        for neighbor, n_model in client_models.items():
+            if neighbor == idx:
+                continue
+            n_param = n_model.state_dict()
+            similarities[neighbor] = similarity_calculation_based_on_prediction(i_model, n_model, server_idx, args.tau)
+            for layer, params in n_param.items():
+                aggregated_models[idx][layer] += (1-args.self_attention) * similarities[neighbor] * params
+
+        total_similarity = sum(similarities.values())
+        for layer, params in aggregated_models[idx].items():
+            params /= total_similarity
+
+        for neighbor, n_model in client_models.items():
+            if neighbor == idx:
+                n_param = n_model.state_dict()
+                for layer, params in n_param.items():
                     aggregated_models[idx][layer] += args.self_attention * params
                 break
 
@@ -216,7 +264,7 @@ if __name__ == '__main__':
 
         global_model.train()
 
-        aggregated_models_all = {0: [], 1: [], 2: [], 3: [], 4: [], 5: []}
+        aggregated_models_all = {i: [] for i in range(args.num_users)}
 
         # communication
         for idx in idx_users:

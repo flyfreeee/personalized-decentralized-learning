@@ -126,12 +126,13 @@ class LocalUpdate(object):
         return accuracy, loss
 
     def predict(self, model):
-        """ Returns the prediction labels on training set
+        """ Returns the prediction labels on validation set
         """
 
         model.eval()
+        all_pred_labels = torch.Tensor([])
 
-        for batch_idx, (images, labels) in enumerate(self.trainloader):
+        for batch_idx, (images, labels) in enumerate(self.validloader):
             images, labels = images.to(self.device), labels.to(self.device)
 
             # Inference
@@ -141,8 +142,9 @@ class LocalUpdate(object):
             # Prediction
             _, pred_labels = torch.max(outputs, dim=1)
             pred_labels = pred_labels.view(-1)
+            all_pred_labels = torch.cat([all_pred_labels, pred_labels])
 
-        return pred_labels
+        return all_pred_labels
 
 
 def test_inference(args, model, test_dataset):

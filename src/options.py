@@ -34,16 +34,18 @@ def args_parser():
                         help='regularization parameter')
     parser.add_argument('--non_iid_level', type=float, default=configs.noniidlevel,
                         help='non-iid level')
-    parser.add_argument('--personalized', type=float, default=configs.personalized,
+    parser.add_argument('--personalized', type=bool, default=configs.personalized,
                         help='whether to perform personalized aggregation')
     parser.add_argument('--tau', type=float, default=configs.tau,
                         help='temperature for similarity calculation')
-    parser.add_argument('--aggregation', type=float, default=configs.aggregation,
+    parser.add_argument('--aggregation', type=bool, default=configs.aggregation,
                         help='using simple aggregation')
     parser.add_argument('--self_attention', type=float, default=configs.self_attention,
                         help='self-attention of "cloud" personalized model')
-    parser.add_argument('--one_hop', type=float, default=configs.one_hop,
+    parser.add_argument('--one_hop', type=bool, default=configs.one_hop,
                         help='whether to use one hop similarity for weight calculation')
+    parser.add_argument('--common_set', type=bool, default=configs.common_set,
+                        help='whether to use a common dataset')
 
     # model arguments
     parser.add_argument('--model', type=str, default=configs.model, help='model name')

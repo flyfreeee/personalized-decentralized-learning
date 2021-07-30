@@ -1,6 +1,7 @@
 import numpy as np
 from torchvision import datasets, transforms
 import random
+from torch.utils.data import Subset, RandomSampler
 
 
 def randomSplit(M, N, minV, maxV):
@@ -79,12 +80,11 @@ def data_partition(training_data, number_of_clients, non_iid_level):
             all_idxs = list(set(all_idxs) - data_partition_profile[i])
 
     else:
-
         client_dict = {}
 
         pref_dist = uniform(number_of_clients, len(labels))
         print(pref_dist)
-        data_dist = normal(len(training_data), number_of_clients)
+        data_dist = randomSplit(len(training_data), number_of_clients, 500, 7000)
         data_dist.sort(reverse=True)
         print(data_dist)
 
@@ -96,7 +96,13 @@ def data_partition(training_data, number_of_clients, non_iid_level):
                 pref_dist[i] -= 1
                 client_list = list(set(client_list) - set([client]))
 
-        client_dict = {0: [1, 2], 1: [3, 4], 2: [5, 6], 3: [3, 4], 4: [1, 2], 5: [5, 6]}
+        # for 6 users
+        # client_dict = {0: [1, 2], 1: [3, 4], 2: [5, 6], 3: [3, 4], 4: [1, 2], 5: [5, 6]}
+        # for 7 users
+        # client_dict = {0: [1, 2], 1: [3, 4], 2: [5, 6], 3: [1, 2], 4: [5, 6], 5: [3, 4], 6: [7, 8]}
+        # for 15 users
+        client_dict = {0: [1, 2], 1: [3, 4], 2: [1, 2], 3: [5, 6], 4: [1, 2], 5: [7, 8], 6: [3, 4], 7: [9, 0],
+                       8: [5, 6], 9: [1, 2], 10: [9, 0], 11: [5, 6], 12: [3, 4], 13: [7, 8], 14: [3, 4]}
 
         data_partition_profile, all_idxs = {}, [i for i in range(len(training_data))]
 
@@ -112,8 +118,8 @@ def data_partition(training_data, number_of_clients, non_iid_level):
             data_dist[i] -= pref_number1
             data_dist[i] -= pref_number2
 
-            tep1 =  set(np.random.choice(data_dict[client_dict[i][0]], pref_number1, replace=False))
-            tep2 =  set(np.random.choice(data_dict[client_dict[i][1]], pref_number2, replace=False))
+            tep1 = set(np.random.choice(data_dict[client_dict[i][0]], pref_number1, replace=False))
+            tep2 = set(np.random.choice(data_dict[client_dict[i][1]], pref_number2, replace=False))
             data_partition_profile[i] = tep1.union(tep2)
             all_idxs = list(set(all_idxs) - data_partition_profile[i])
 
@@ -187,6 +193,7 @@ if __name__ == '__main__':
                                        transforms.Normalize((0.1307,),
                                                             (0.3081,))
                                    ]))
+
     num = 5
     d = data_partition_trial(dataset_train, num)
 
