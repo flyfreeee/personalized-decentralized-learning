@@ -31,8 +31,8 @@ def get_parameter_number(net):
 
 
 def similarity_calculation(model_a, model_b, tau):
-    param_a = torch.cat([params.view(-1) for layer, params in model_a.items()])
-    param_b = torch.cat([params.view(-1) for layer, params in model_b.items()])
+    param_a = model_a.view(-1)
+    param_b = model_b.view(-1)
 
     cos = nn.CosineSimilarity(dim=0, eps=1e-6)
     similarity = math.exp(cos(param_a, param_b) / tau)
@@ -56,39 +56,27 @@ def similarity_calculation_head(model_a, model_b, tau):
     return aggregated_models = {2:odict([]), 5:odict([])}'''
 
 
-def personalized_aggregation(server_model, client_models):
-    aggregated_models = {}
-    server_idx = list(server_model.keys())[0]
-    server_param = server_model[server_idx].state_dict()
+def personalized_aggregation(my_idx, my_logits, client_logits):
+    if len(client_logits) == 1:
+        return list(client_logits.values())[0][0]
 
-    for idx, i_model in client_models.items():
-        similarities = {}
-        param = i_model.state_dict()
-        similarities[server_idx] = similarity_calculation(param, server_param, args.tau)
-        aggregated_models[idx] = copy.deepcopy(server_param)
-        for layer, params in aggregated_models[idx].items():
-            params *= (1-args.self_attention) * similarities[server_idx]
+    similarities = {}
 
-        for neighbor, n_model in client_models.items():
-            if neighbor == idx:
-                continue
-            n_param = n_model.state_dict()
-            similarities[neighbor] = similarity_calculation(param, n_param, args.tau)
-            for layer, params in n_param.items():
-                aggregated_models[idx][layer] += (1-args.self_attention) * similarities[neighbor] * params
+    neighbor_logits = [(k, v) for (k, v) in client_logits.items() if k != my_idx]
+    aggregated_logits = copy.deepcopy(neighbor_logits[0][1][0])
+    similarities[neighbor_logits[0][0]] = similarity_calculation(my_logits, neighbor_logits[0][1][0], args.tau)
+    aggregated_logits *= (1 - args.self_attention) * similarities[neighbor_logits[0][0]]
 
-        total_similarity = sum(similarities.values())
-        for layer, params in aggregated_models[idx].items():
-            params /= total_similarity
+    for neighbor, (n_logits, n_t) in neighbor_logits[1:]:
+        similarities[neighbor] = similarity_calculation(my_logits, n_logits, args.tau)
+        aggregated_logits += (1 - args.self_attention) * similarities[neighbor] * n_logits
 
-        for neighbor, n_model in client_models.items():
-            if neighbor == idx:
-                n_param = n_model.state_dict()
-                for layer, params in n_param.items():
-                    aggregated_models[idx][layer] += args.self_attention * params
-                break
+    total_similarity = sum(similarities.values())
+    aggregated_logits /= total_similarity
 
-    return aggregated_models
+    aggregated_logits += args.self_attention * my_logits
+
+    return aggregated_logits
 
 
 def personalized_aggregation_head(server_model, client_models):
@@ -242,8 +230,11 @@ if __name__ == '__main__':
     # client_will = args.client_will
 
     aggregated_models_all = {}
+    
     client_models = {}
-    idx_users = list(user_groups.keys())
+    client_logits = {}
+    
+    idx_users = list(user_groups.keys())[1:]
     info = pd.DataFrame(columns=['acc', 'loss'])
     info2 = pd.DataFrame(columns=['acc', 'loss'])
     info_personal = []
@@ -257,6 +248,22 @@ if __name__ == '__main__':
     for idx in idx_users:
         client_models[idx] = copy.deepcopy(global_model)
 
+    for idx in idx_users:
+        initial_model = LocalUpdate(args=args, dataset=train_dataset, idxs=user_groups[idx],
+                                    idxs_common=user_groups['common'], logger=logger)
+        client_logits[idx] = initial_model.common_logits(client_models[idx])
+
+    logits_to_send = {}
+    for idx in idx_users:
+        logits_to_send[idx] = {}
+        for neighbor in args.neighbors[idx]:
+            logits_to_send[idx][neighbor] = [idx]
+
+    logits_kept = {}
+    for idx in idx_users:
+        logits_kept[idx] = {}
+        logits_kept[idx][idx] = (copy.deepcopy(client_logits[idx]), -1)
+    
     for epoch in tqdm(range(args.epochs)):
 
         local_weights, local_losses, local_acc = [], [], []
@@ -267,62 +274,40 @@ if __name__ == '__main__':
         aggregated_models_all = {i: [] for i in range(args.num_users)}
 
         # communication
+        logits_to_send_tmp = copy.deepcopy(logits_to_send)
+        logits_kept_tmp = copy.deepcopy(logits_kept)
+
         for idx in idx_users:
-
-            # 'client' sends original models to 'server'
-            neighbor_models = {}
-
             for neighbor in args.neighbors[idx]:
-                neighbor_models[neighbor] = client_models[neighbor]
+                for m in logits_kept[idx].keys():
+                    if m not in list(logits_kept[neighbor].keys()) or logits_kept[neighbor][m][1] < \
+                            logits_kept[idx][m][1]:
+                        logits_kept_tmp[neighbor][m] = logits_kept[idx][m]
+                        if m not in logits_to_send[idx][neighbor]:
+                            logits_to_send_tmp[idx][neighbor].append(m)
+                    elif m in logits_to_send[idx][neighbor]:
+                        logits_to_send_tmp[idx][neighbor].remove(m)
 
-            # 'server' performs model aggregation
-            if args.personalized:
-                aggregated_models = personalized_aggregation({idx: client_models[idx]}, neighbor_models)
-            else:
-                aggregated_models = {}
-
-                for neighbor in neighbor_models.keys():
-                    aggregated_models[neighbor] = copy.deepcopy(client_models[idx].state_dict())
-
-            # 'server' sends aggregated models to 'client'
-            for receiver, model in aggregated_models.items():
-                aggregated_models_all[receiver].append(model)
-
-        if args.aggregation:
-            if args.personalized:
-                for idx in idx_users:
-                    received_model_weights = [copy.deepcopy(m) for m in aggregated_models_all[idx]]
-                    client_models[idx].load_state_dict(average_weights(received_model_weights))
-            elif args.one_hop:
-                for idx in idx_users:
-                    received_model_weights = [copy.deepcopy(client_models[idx].state_dict())]
-                    received_model_weights += [copy.deepcopy(m) for m in aggregated_models_all[idx]]
-                    similarities = [similarity_calculation(client_models[idx].state_dict(), m, args.tau) for m in received_model_weights]
-                    client_models[idx].load_state_dict(one_hop_average_weights2(args, received_model_weights, similarities))
-            else:
-                for idx in idx_users:
-                    received_model_weights = [copy.deepcopy(client_models[idx].state_dict())]
-                    received_model_weights += [copy.deepcopy(m) for m in aggregated_models_all[idx]]
-                    client_models[idx].load_state_dict(average_weights(received_model_weights))
+        logits_to_send = copy.deepcopy(logits_to_send_tmp)
+        logits_kept = copy.deepcopy(logits_kept_tmp)
 
         # local update
         for idx in idx_users:
 
-            local_model = LocalUpdate(args=args, dataset=train_dataset,
-                                      idxs=user_groups[idx], idxs_common=user_groups['common'], logger=logger)
+            local_model = LocalUpdate(args=args, dataset=train_dataset, idxs=user_groups[idx],
+                                      idxs_common=user_groups['common'], logger=logger)
 
-            my_aggregated_models = aggregated_models_all[idx]
-            aggregated_prediction = torch.Tensor([])
-
+            my_aggregated_logits = personalized_aggregation(idx, client_logits[idx], logits_kept[idx])
 
             w, train_loss = local_model.update_weights(
-                copy.deepcopy(client_models[idx]), aggregated_prediction, global_round=epoch)
+                copy.deepcopy(client_models[idx]), my_aggregated_logits, global_round=epoch)
+
+            # logits of common dataset
+            client_logits[idx] = local_model.common_logits(model=client_models[idx])
 
             # test on personal test data
             acc, loss = local_model.inference(model=client_models[idx])
-
             client_models[idx].load_state_dict(copy.deepcopy(w))
-
             info_personal[idx] = info_personal[idx].append([{'acc': acc, 'loss': loss}])
 
             # local_weights.append(copy.deepcopy(w))

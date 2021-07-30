@@ -78,8 +78,10 @@ def data_partition(training_data, number_of_clients, non_iid_level):
     else: # type is Tensor
         labels = training_data.train_labels.numpy()
 
+    labels = labels[all_idxs]
+
     # sort labels
-    idxs_labels = np.vstack((idxs, labels))
+    idxs_labels = np.vstack((all_idxs, labels))
 
     idxs_labels = idxs_labels[:, idxs_labels[1, :].argsort()]
     labels = np.unique(labels, axis=0)
@@ -98,13 +100,13 @@ def data_partition(training_data, number_of_clients, non_iid_level):
 
         pref_dist = uniform(number_of_clients, len(labels))
         print(pref_dist)
-        data_dist = randomSplit(len(training_data), number_of_clients, 500, 7000)
+        data_dist = randomSplit(len(all_idxs), number_of_clients, 500, 7000)
         data_dist.sort(reverse=True)
         print(data_dist)
 
         client_list = list(range(number_of_clients))
         for i in range(len(pref_dist)):
-            while pref_dist[i]>0:
+            while pref_dist[i] > 0:
                 client = np.random.choice(client_list, 1, replace=False)[0]
                 client_dict[client] = labels[i]
                 pref_dist[i] -= 1

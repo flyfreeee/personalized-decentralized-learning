@@ -4,9 +4,11 @@
 
 import torch
 from torch import nn
+import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
 from dloptimizer import dlOptimizer
 from sklearn.model_selection import train_test_split
+import numpy as np
 
 
 class DatasetSplit(Dataset):
@@ -35,9 +37,9 @@ class LocalUpdate(object):
         self.device = 'cuda' if args.gpu else 'cpu'
 
         if args.dataset == 'cifar' or 'mnist' or 'fmnist':
-            self.criterion = nn.NLLLoss().to(self.device)
+            self.loss_CE = nn.NLLLoss().to(self.device)
         else:
-            self.criterion = nn.CrossEntropyLoss().to(self.device)
+            self.loss_CE = nn.CrossEntropyLoss().to(self.device)
 
     def train_val_test(self, dataset, idxs):
         """
@@ -57,8 +59,6 @@ class LocalUpdate(object):
                                 batch_size=int(len(idxs_test) / 10), shuffle=False)
         return trainloader, validloader, testloader
 
-
-
     def update_weights(self, model, aggregated_prediction, global_round):
         # Set mode to train model
         model.train()
@@ -66,16 +66,12 @@ class LocalUpdate(object):
 
         # Set optimizer for the local updates
 
-        if self.args.aggregation:
-            if self.args.optimizer == 'sgd':
-                optimizer = torch.optim.SGD(model.parameters(), lr=self.args.lr,
-                                            momentum=0.5)
-            elif self.args.optimizer == 'adam':
-                optimizer = torch.optim.Adam(model.parameters(), lr=self.args.lr,
-                                             weight_decay=1e-4)
-
-        else:
-            optimizer = dlOptimizer(model.parameters(), lr=self.args.lr, lamda=self.args.lamda)
+        if self.args.optimizer == 'sgd':
+            optimizer = torch.optim.SGD(model.parameters(), lr=self.args.lr,
+                                        momentum=0.5)
+        elif self.args.optimizer == 'adam':
+            optimizer = torch.optim.Adam(model.parameters(), lr=self.args.lr,
+                                         weight_decay=1e-4)
 
         for iter in range(self.args.local_ep):
             batch_loss = []
@@ -84,13 +80,9 @@ class LocalUpdate(object):
 
                 model.zero_grad()
                 log_probs = model(images)
-                loss = self.criterion(log_probs, labels)
+                loss = self.loss_CE(log_probs, labels)
                 loss.backward()
-
-                if self.args.aggregation:
-                    optimizer.step()
-                else:
-                    optimizer.step(aggregated_models)
+                optimizer.step()
 
                 if self.args.verbose and (batch_idx % 10 == 0):
                     print('| Global Round : {} | Local Epoch : {} | [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
@@ -100,6 +92,16 @@ class LocalUpdate(object):
                 self.logger.add_scalar('loss', loss.item())
                 batch_loss.append(loss.item())
             epoch_loss.append(sum(batch_loss) / len(batch_loss))
+
+            for batch_idx, (images, labels) in enumerate(self.commonloader):
+                images, labels = images.to(self.device), labels.to(self.device)
+
+                model.zero_grad()
+                log_probs = model(images)
+                loss_KD = nn.KLDivLoss()(F.log_softmax(log_probs / 5, dim=1), F.softmax(aggregated_prediction / 5, dim=1))
+
+                loss_KD.backward()
+                optimizer.step()
 
         return model.state_dict(), sum(epoch_loss) / len(epoch_loss)
 
@@ -117,7 +119,7 @@ class LocalUpdate(object):
             with torch.no_grad():
                 outputs = model(images)
 
-            batch_loss = self.criterion(outputs, labels)
+            batch_loss = self.loss_CE(outputs, labels)
             loss += batch_loss.item()
 
             # Prediction
@@ -128,6 +130,24 @@ class LocalUpdate(object):
 
         accuracy = correct / total
         return accuracy, loss
+
+    def common_logits(self, model):
+        """ Returns the logits of common dataset.
+        """
+
+        model.eval()
+        all_pred_logits = torch.Tensor([])
+
+        for batch_idx, (images, labels) in enumerate(self.commonloader):
+            images, labels = images.to(self.device), labels.to(self.device)
+
+            # Inference
+            with torch.no_grad():
+                outputs = model(images)
+
+            all_pred_logits = torch.cat([all_pred_logits, outputs])
+
+        return all_pred_logits
 
     def predict(self, model):
         """ Returns the prediction labels on validation set
@@ -161,9 +181,9 @@ def test_inference(args, model, test_dataset):
     device = 'cuda' if args.gpu else 'cpu'
 
     if args.dataset == 'cifar' or 'mnist' or 'fmnist':
-        criterion = nn.NLLLoss().to(device)
+        loss_CE = nn.NLLLoss().to(device)
     else:
-        criterion = nn.CrossEntropyLoss().to(device)
+        loss_CE = nn.CrossEntropyLoss().to(device)
 
     testloader = DataLoader(test_dataset, batch_size=128,
                             shuffle=False)
@@ -174,7 +194,7 @@ def test_inference(args, model, test_dataset):
         # Inference
         with torch.no_grad():
             outputs = model(images)
-        batch_loss = criterion(outputs, labels)
+        batch_loss = loss_CE(outputs, labels)
         loss += batch_loss.item()
 
         # Prediction
